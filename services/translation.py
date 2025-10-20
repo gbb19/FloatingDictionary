@@ -9,17 +9,17 @@ from googletrans import Translator
 
 # --- Google Translate ---
 
-async def async_translate(text):
+async def async_translate(text, dest_lang, src_lang):
     """Async function for Google Translate."""
     translator = Translator()
     try:
-        result = await translator.translate(text, src='en', dest='th')
+        result = await translator.translate(text, src=src_lang, dest=dest_lang)
         return result.text
     except Exception as e:
         print(f"Google Translate Error: {e}")
         return f"Google Error: {e}"
 
-def get_google_translation_sync(text):
+def get_google_translation_sync(text, dest_lang, src_lang='auto'):
     """Wrapper to run async_translate in a new event loop for synchronous calls."""
     loop = None
     try:
@@ -27,7 +27,7 @@ def get_google_translation_sync(text):
         # to avoid conflicts with other running asyncio loops.
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(async_translate(text))
+        result = loop.run_until_complete(async_translate(text, dest_lang, src_lang))
         return result
     except Exception as e:
         print(f"Sync/Async Loop Error: {e}")
@@ -36,7 +36,7 @@ def get_google_translation_sync(text):
         if loop:
             loop.close()
 
-# --- Longdo Dictionary Scraper ---
+# --- Longdo Dictionary Scraper (EN-TH only) ---
 
 def fetch_longdo_word(word: str) -> BeautifulSoup | None:
     """Fetches the word definition page from Longdo and returns a BeautifulSoup object."""

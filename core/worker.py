@@ -6,7 +6,7 @@ import pytesseract
 from queue import Queue
 import threading
 
-from config import CAPTURE_WIDTH, CAPTURE_HEIGHT
+from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP
 
 
 from services.translation import fetch_longdo_word, parse_longdo_data, get_google_translation_sync
@@ -95,10 +95,12 @@ class TranslationWorker(threading.Thread):
         left, top = job['region_top_left']
 
         try:
-            data = pytesseract.image_to_data(screenshot, lang='eng', output_type=pytesseract.Output.DICT)
+            # Use the source language for OCR, mapping the 2-letter code to Tesseract's 3-letter code.
+            tesseract_lang = LANG_CODE_MAP.get(SOURCE_LANG, SOURCE_LANG)
+            data = pytesseract.image_to_data(screenshot, lang=tesseract_lang, output_type=pytesseract.Output.DICT)
         except pytesseract.pytesseract.TesseractError as e:
             print(f"Tesseract Error: {e}")
-            self.emitter.show_tooltip.emit("<i>Tesseract Error</i>", None)
+            self.emitter.show_tooltip.emit(f"<i>Tesseract Error for language '{tesseract_lang}'. Please ensure the language data is installed.</i>", None)
             return
 
         text_boxes = []
@@ -133,8 +135,9 @@ class TranslationWorker(threading.Thread):
             sentence = source
         else: # The source is a screenshot
             try:
-                # OCR the entire image as a single block of text
-                sentence = pytesseract.image_to_string(source, lang='eng')
+                # OCR the entire image using the configured source language.
+                tesseract_lang = LANG_CODE_MAP.get(SOURCE_LANG, SOURCE_LANG)
+                sentence = pytesseract.image_to_string(source, lang=tesseract_lang)
                 # Clean up OCR results by replacing newlines
                 sentence = sentence.replace('\n', ' ').replace('-\n', '').strip()
             except pytesseract.pytesseract.TesseractError as e:
@@ -146,15 +149,19 @@ class TranslationWorker(threading.Thread):
             return
 
         self.emitter.show_tooltip.emit("<i>Translating sentence...</i>", bounding_rect)
-        google_translation = get_google_translation_sync(sentence)
-        formatted_text = f"<p style='font-size: 14pt;'><b>EN:</b> {sentence}</p><hr><p style='font-size: 14pt;'><b>TH:</b> {google_translation}</p>"
+        google_translation = get_google_translation_sync(sentence, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+        
+        # Format the sentence translation directly.
+        formatted_text = (f"<p style='font-size: 14pt;'><b>{SOURCE_LANG.upper()}:</b> {sentence}</p><hr>"
+                        f"<p style='font-size: 14pt;'><b>{TARGET_LANG.upper()}:</b> {google_translation}</p>")
         self.emitter.show_tooltip.emit(formatted_text, bounding_rect)
 
     def _process_pre_ocr(self, screenshot, region_top_left, job):
         """Performs OCR on a region and emits the found word boxes for the UI to handle."""
         left, top = region_top_left
         try:
-            data = pytesseract.image_to_data(screenshot, lang='eng', output_type=pytesseract.Output.DICT)
+            tesseract_lang = LANG_CODE_MAP.get(SOURCE_LANG, SOURCE_LANG)
+            data = pytesseract.image_to_data(screenshot, lang=tesseract_lang, output_type=pytesseract.Output.DICT)
             
             text_boxes = []
             for i in range(len(data['text'])):
@@ -181,16 +188,30 @@ class TranslationWorker(threading.Thread):
         if not search_word:
             return
 
-        if search_word not in self.translation_cache:
-            print(f"Searching (Longdo & Google): {search_word}")
-            soup = fetch_longdo_word(search_word)
-            longdo_data = parse_longdo_data(soup) if soup else None
-            google_translation = get_google_translation_sync(search_word)
-            formatted_translation = format_combined_data(longdo_data, google_translation, search_word)
-            self.translation_cache[search_word] = formatted_translation
+        # Use a tuple of word and languages as the cache key
+        cache_key = (search_word, SOURCE_LANG, TARGET_LANG)
+
+        if cache_key not in self.translation_cache:
+            print(f"Searching online for: {search_word}")
+            longdo_data = None
+            # Only use Longdo Scraper if translating from English to Thai
+            if SOURCE_LANG == 'en' and TARGET_LANG == 'th':
+                soup = fetch_longdo_word(search_word)
+                longdo_data = parse_longdo_data(soup) if soup else None
+            
+            google_translation = get_google_translation_sync(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+            
+            formatted_translation = format_combined_data(
+                longdo_data, 
+                google_translation, 
+                search_word,
+                SOURCE_LANG,
+                TARGET_LANG
+            )
+            self.translation_cache[cache_key] = formatted_translation
         else:
             print(f"Fetching from cache: {search_word}")
-            formatted_translation = self.translation_cache[search_word]
+            formatted_translation = self.translation_cache[cache_key]
         
         # Ensure the tooltip corresponds to the most recently processed word
         if self.last_processed_box == box:
