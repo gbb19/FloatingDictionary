@@ -16,7 +16,7 @@ def format_combined_data(longdo_data: dict | None, google_translation: str, sear
     if google_translation and "Error" not in google_translation and google_translation.lower() != search_word.lower():
         output_lines.append(f"<p style='margin: 0;'>&#8226; {google_translation}</p>")
     else:
-        output_lines.append(f"<p style='margin: 0;'><i>(ไม่สามารถแปลได้)</i></p>")
+        output_lines.append(f"<p style='margin: 0;'><i>(Translation not available)</i></p>")
     
     # 3. Longdo Dict Section
     output_lines.append("<p style='font-size: 16pt; margin: 8px 0 2px 0;'><u><b>Longdo Dict:</b></u></p>")
@@ -26,13 +26,14 @@ def format_combined_data(longdo_data: dict | None, google_translation: str, sear
             line = f"<p style='margin: 0 0 4px 0;'>&#8226; <b>{item['word']}</b> [{item['pos']}] {item['translation']} ({item['dictionary']})</p>"
             output_lines.append(line)
     elif longdo_data:
-        output_lines.append("<p style='margin: 0;'><i>(ไม่พบคำแปล)</i></p>")
+        output_lines.append("<p style='margin: 0;'><i>(No translation found)</i></p>")
     else:
-        output_lines.append("<p style='margin: 0;'><i>(เชื่อมต่อล้มเหลว)</i></p>")
+        output_lines.append("<p style='margin: 0;'><i>(Connection failed)</i></p>")
     
     # 4. Examples Section
     if longdo_data and longdo_data['examples']:
-        output_lines.append("<p style='font-size: 16pt; margin: 8px 0 2px 0;'><u><b>ตัวอย่างประโยค (Longdo):</b></u></p>")
+        output_lines.append("<p style='font-size: 16pt; margin: 8px 0 2px 0;'><u><b>Example Sentences (Longdo):</b></u></p>")
+        # Show up to 2 examples
         for ex in longdo_data['examples'][:2]: 
             output_lines.append(f"<p style='margin: 0 0 4px 0;'>&#8226; <i>EN:</i> {ex['en']}<br>  <i>&#8594; TH:</i> {ex['th']}</p>")
     

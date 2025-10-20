@@ -26,17 +26,18 @@ def initialize_tesseract():
         tessdata_dir = get_executable_path(os.path.join("Tesseract-OCR", "tessdata"))
         tessdata_dir_forward = tessdata_dir.replace('\\', '/')
         os.environ['TESSDATA_PREFIX'] = tessdata_dir_forward
-        print(f"✓ ตั้ง TESSDATA_PREFIX = {tessdata_dir_forward}")
+        print(f"✓ TESSDATA_PREFIX set to: {tessdata_dir_forward}")
 
         # Set Tesseract command path and verify
         tesseract_path = get_executable_path(os.path.join("Tesseract-OCR", "tesseract.exe"))
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
         pytesseract.get_tesseract_version()
-        print("✓ Tesseract เตรียมพร้อมแล้ว")
+        print("✓ Tesseract is ready.")
         return True
     except Exception as e:
         print("="*50)
-        print("!!! Tesseract OCR ไม่ถูกต้อง !!!")
+        print("!!! Tesseract OCR not found or configured correctly !!!")
         print(f"Error: {e}")
+        print("Please ensure Tesseract-OCR is copied to the project root as per the README.")
         print("="*50)
         return False

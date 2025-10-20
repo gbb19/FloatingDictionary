@@ -9,7 +9,8 @@ from utils.windows import force_set_focus
 
 class CustomScrollArea(QScrollArea):
     """
-    A QScrollArea subclass that correctly handles mouse events for transparent windows.
+    A QScrollArea subclass that sets the focus policy to NoFocus to prevent
+    it from stealing focus from the user's active window.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -21,10 +22,11 @@ class CustomScrollArea(QScrollArea):
 class PersistentToolTip(QWidget):
     """
     A custom tooltip widget that can be controlled programmatically,
-    supports scrolling, animations, and proper focus handling.
+    supports scrolling, animations, and does not steal focus.
     """
     def __init__(self):
         super().__init__()
+        # Set window flags to be a frameless, always-on-top popup.
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Popup)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
@@ -64,7 +66,6 @@ class PersistentToolTip(QWidget):
         self.hide_animation.setStartValue(1.0)
         self.hide_animation.setEndValue(0.0)
         
-        self.previous_focus_hwnd = None
         self.hide()
 
     def paintEvent(self, event):
@@ -76,13 +77,11 @@ class PersistentToolTip(QWidget):
         painter.drawRoundedRect(self.rect(), 10, 10)
 
     def on_hide_finished(self):
-        """Slot called when the hide animation finishes."""
+        """Slot called when the hide animation finishes to hide the widget completely."""
         self.hide()
-        # --- [ลบออก] ไม่จำเป็นต้องคืน Focus แล้ว เพราะเราไม่ได้ขโมยมาตั้งแต่แรก ---
-        # force_set_focus(self.previous_focus_hwnd)
 
     def start_hide_animation(self):
-        """Starts the fade-out animation."""
+        """Starts the fade-out animation if the widget is visible."""
         if self.isVisible():
             self.animation.stop()
             self.hide_animation.start()
@@ -95,12 +94,12 @@ class PersistentToolTip(QWidget):
             self.start_hide_animation()
             return
         
-        # 1. Determine max size based on screen geometry
+        # Step 1: Determine max size based on the available screen geometry.
         screen_geo = QApplication.desktop().availableGeometry(position)
         max_width = int(screen_geo.width() * 0.35)
         max_height = int(screen_geo.height() * 0.5)
 
-        # 2. Set text and calculate ideal size
+        # Step 2: Set text and calculate the ideal size for the content.
         self.label.setText(text)
         self.label.setMinimumSize(0, 0)
         self.label.setMaximumSize(16777215, 16777215)
@@ -108,19 +107,19 @@ class PersistentToolTip(QWidget):
         unconstrained_size = self.label.sizeHint()
 
         if unconstrained_size.width() > max_width:
-            # If text is wider than max_width, constrain width and recalculate height
-            self.label.setFixedWidth(max_width - 24 - 8) # max_width - (padding*2) - scrollbar
+            # If text is wider than max_width, constrain width and recalculate height.
+            self.label.setFixedWidth(max_width - 24 - 8) # max_width - (h_padding*2) - scrollbar_width
             ideal_height = self.label.sizeHint().height()
             final_width = max_width
-            final_height = min(ideal_height + 24, max_height) # +24 for padding
+            final_height = min(ideal_height + 24, max_height) # + v_padding*2
         else:
-            # If text is narrow, use its ideal size
+            # If text is narrow, use its ideal size.
             final_width = unconstrained_size.width() + 24
             final_height = unconstrained_size.height() + 24
 
         self.setFixedSize(final_width, final_height)
 
-        # 3. Position the tooltip to avoid going off-screen
+        # Step 3: Position the tooltip to avoid going off-screen.
         final_pos = QPoint(position.x() + 15, position.y() + 20)
 
         if final_pos.x() + final_width > screen_geo.right():
@@ -137,16 +136,14 @@ class PersistentToolTip(QWidget):
 
         self.move(final_pos)
         
-        # 4. Start fade-in animation and manage focus
+        # Step 4: Start fade-in animation.
         self.animation.stop()
         self.show()
         self.animation.start()
 
-        # Connect hide animation finished signal
+        # Ensure the hide animation is connected to its slot.
         try:
             self.hide_animation.finished.disconnect()
         except TypeError:
             pass # Was not connected
         self.hide_animation.finished.connect(self.on_hide_finished)
-
-        # --- [ลบออก] ไม่ต้องขโมย Focus อีกต่อไป ---

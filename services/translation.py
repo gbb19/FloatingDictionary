@@ -23,6 +23,8 @@ def get_google_translation_sync(text):
     """Wrapper to run async_translate in a new event loop for synchronous calls."""
     loop = None
     try:
+        # Create and manage a new event loop for this synchronous function call
+        # to avoid conflicts with other running asyncio loops.
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         result = loop.run_until_complete(async_translate(text))
@@ -49,7 +51,7 @@ def fetch_longdo_word(word: str) -> BeautifulSoup | None:
         soup = BeautifulSoup(response.text, 'html.parser')
         return soup
     except requests.exceptions.RequestException as e:
-        print(f"เกิดข้อผิดพลาดในการเชื่อมต่อ Longdo: {e}")
+        print(f"Error connecting to Longdo: {e}")
         return None
 
 def parse_longdo_data(soup: BeautifulSoup) -> dict:
@@ -74,16 +76,19 @@ def parse_longdo_data(soup: BeautifulSoup) -> dict:
                         
                         pos = "N/A"
                         translation = definition_raw
+                        # Attempt to parse part-of-speech and the definition separately
                         match = re.match(r'\s*\((.*?)\)\s*(.*)', definition_raw, re.DOTALL)
                         
                         if match:
                             pos = match.group(1).strip()
                             translation = match.group(2).strip()
+                            # Sometimes the POS is also in the translation text, try to extract it.
                             translation_match = re.match(r'^(pron|adj|det|n|v|adv|int|conj)\.?(.*)', translation, re.IGNORECASE | re.DOTALL)
                             if translation_match:
                                 pos = translation_match.group(1).strip('.')
                                 translation = translation_match.group(2).strip()
                         
+                        # Fix common OCR/scraping errors
                         translation = translation.replace("your self", "yourself").replace("your selves", "yourselves")
 
                         results["translations"].append({
@@ -93,6 +98,7 @@ def parse_longdo_data(soup: BeautifulSoup) -> dict:
                             "translation": translation
                         })
 
+    # Find the table for example sentences. The header text is in Thai.
     string_element = soup.find(string=re.compile(r'^\s*ตัวอย่างประโยคจาก Open Subtitles'))
     table = None
     if string_element:
