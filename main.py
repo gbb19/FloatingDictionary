@@ -15,7 +15,7 @@ from core.hotkey_manager import HotkeyManager
 # -------------------------------------------------------------------
 class SignalEmitter(QObject):
     show_tooltip = pyqtSignal(str)
-    pre_ocr_ready = pyqtSignal(list)
+    pre_ocr_ready = pyqtSignal(list, 'PyQt_PyObject') # --- [แก้ไข] เพิ่ม Argument สำหรับ region ---
     blink_box = pyqtSignal(dict)
     enter_sentence_mode_signal = pyqtSignal()
     
@@ -102,8 +102,9 @@ class MainApplication:
     def enter_sentence_mode(self):
         self.overlay.enter_region_selection_mode()
 
-    def on_pre_ocr_ready(self, boxes):
-        self.overlay.enter_word_selection_mode(boxes)
+    def on_pre_ocr_ready(self, boxes, region):
+        # --- [แก้ไข] รับ region และส่งต่อไปยัง Overlay ---
+        self.overlay.enter_word_selection_mode(boxes, region)
 
     def on_region_selected(self, region):
         self.worker.add_pre_ocr_job(region)

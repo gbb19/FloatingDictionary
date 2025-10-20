@@ -56,7 +56,8 @@ class TranslationWorker(threading.Thread):
         self.queue.put({
             'screenshot': screenshot, 
             'region_top_left': (rect[0], rect[1]), # The top-left corner of the selected region
-            'is_pre_ocr': True
+            'is_pre_ocr': True,
+            'original_region': region # --- [เพิ่ม] ส่ง region ต้นฉบับไปด้วย ---
         })
 
     def add_ocr_and_translate_job(self, region):
@@ -78,7 +79,7 @@ class TranslationWorker(threading.Thread):
             return
 
         if job.get('is_pre_ocr', False):
-            self._process_pre_ocr(screenshot, job['region_top_left'])
+            self._process_pre_ocr(screenshot, job['region_top_left'], job)
             return
 
         if job.get('is_sentence', False):
@@ -145,8 +146,8 @@ class TranslationWorker(threading.Thread):
         formatted_text = f"<p style='font-size: 14pt;'><b>EN:</b> {sentence}</p><hr><p style='font-size: 14pt;'><b>TH:</b> {google_translation}</p>"
         self.emitter.show_tooltip.emit(formatted_text)
 
-    def _process_pre_ocr(self, screenshot, region_top_left):
-        """Performs OCR and emits the found word boxes."""
+    def _process_pre_ocr(self, screenshot, region_top_left, job):
+        """Performs OCR and emits the found word boxes along with the original region."""
         left, top = region_top_left
         try:
             data = pytesseract.image_to_data(screenshot, lang='eng', output_type=pytesseract.Output.DICT)
@@ -162,10 +163,10 @@ class TranslationWorker(threading.Thread):
                         'width': int(data['width'][i]), 'height': int(data['height'][i])
                     })
             # Emit the list of found boxes to the main thread
-            self.emitter.pre_ocr_ready.emit(text_boxes)
+            self.emitter.pre_ocr_ready.emit(text_boxes, job['original_region'])
         except pytesseract.pytesseract.TesseractError as e:
             print(f"Pre-OCR Tesseract Error: {e}")
-            self.emitter.pre_ocr_ready.emit([]) # Emit empty list on error
+            self.emitter.pre_ocr_ready.emit([], job.get('original_region')) # Emit empty list on error
 
     def _translate_and_show(self, box):
         """Fetches translations, formats, and displays them."""

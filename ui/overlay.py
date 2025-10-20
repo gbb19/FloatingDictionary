@@ -93,7 +93,7 @@ class Overlay(QWidget):
             painter.setPen(QPen(QColor("#888")))
             painter.drawRoundedRect(self.button_translate_all_rect, 5, 5)
             painter.setPen(QPen(QColor("#f0f0f0")))
-            painter.drawText(self.button_translate_all_rect, Qt.AlignCenter, "แปลทั้งหมด")
+            painter.drawText(self.button_translate_all_rect, Qt.AlignCenter, "Translate All")
 
             # Draw "Select Words" button
             bg_color_select = QColor("#555") if self.hovered_button == 'select' else QColor("#333")
@@ -101,11 +101,17 @@ class Overlay(QWidget):
             painter.setPen(QPen(QColor("#888")))
             painter.drawRoundedRect(self.button_select_words_rect, 5, 5)
             painter.setPen(QPen(QColor("#f0f0f0")))
-            painter.drawText(self.button_select_words_rect, Qt.AlignCenter, "เลือกคำ")
+            painter.drawText(self.button_select_words_rect, Qt.AlignCenter, "Select Words")
         elif self.is_selection_mode:
             # --- [แก้ไข] รวมโค้ดวาดพื้นหลังที่ซ้ำซ้อน และใช้สีใหม่ ---
             painter.fillRect(self.rect(), overlay_background_color)
             
+            # --- [เพิ่ม] วาดกรอบของพื้นที่ที่เลือกไว้แต่แรก เพื่อให้ผู้ใช้เห็นขอบเขต ---
+            pen = QPen(QColor("#33AFFF"), 1, Qt.DashLine) # สีฟ้า, เส้นประ
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawRect(self.selection_rect)
+
             # Draw selected boxes
             painter.setPen(QPen(QColor(0, 0, 0, 0))) # No border
             painter.setBrush(QColor(60, 179, 113, 120)) # SeaGreen
@@ -144,12 +150,14 @@ class Overlay(QWidget):
         self.show()
         self.activateWindow()
 
-    def enter_word_selection_mode(self, boxes):
+    def enter_word_selection_mode(self, boxes, selection_rect):
         """Activates the overlay for word-by-word selection."""
+        self.exit_selection_mode() # Reset first
         self.all_word_boxes = boxes
+        self.selection_rect = selection_rect # --- [เพิ่ม] รับค่า selection_rect มาเก็บไว้ ---
         self.is_selection_mode = True
         self.set_box(None)
-        self.setCursor(QCursor(Qt.CrossCursor))
+        self.setCursor(QCursor(Qt.IBeamCursor)) # --- [แก้ไข] เปลี่ยน Cursor เป็นแบบเลือกข้อความ (I-Beam) ---
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.show()
         self.activateWindow()
@@ -255,9 +263,21 @@ class Overlay(QWidget):
                 self.hovered_word_box = new_hovered_box
                 self.update()
 
-            # --- [แก้ไข] ปรับปรุง Logic การลากเพื่อเลือก (Paint selection) ---
-            if self.is_mouse_pressed and new_hovered_box and new_hovered_box not in self.selected_word_boxes:
-                self.selected_word_boxes.append(new_hovered_box)
+            # --- [แก้ไข] ใช้ Logic การเลือกแบบ Text Editor (ลากแล้วเลือก) เพียงอย่างเดียว ---
+            if self.is_mouse_pressed and new_hovered_box and self.selection_anchor_box:
+                try:
+                    start_index = self.all_word_boxes.index(self.selection_anchor_box)
+                    end_index = self.all_word_boxes.index(new_hovered_box)
+
+                    # เรียง index ให้ถูกต้องเสมอ
+                    if start_index > end_index:
+                        start_index, end_index = end_index, start_index
+                    
+                    # เลือกคำทั้งหมดที่อยู่ระหว่าง start และ end
+                    self.selected_word_boxes = self.all_word_boxes[start_index : end_index + 1]
+                except (ValueError, IndexError):
+                    # ป้องกันข้อผิดพลาดหากไม่เจอคำใน list
+                    pass
                 self.update()
 
     def mouseReleaseEvent(self, event):
