@@ -20,12 +20,7 @@ LANG_CODE_MAP = {
     'en': 'eng',
     'th': 'tha',
     'ja': 'jpn',
-    'ko': 'kor',
     'zh-cn': 'chi_sim',
-    'zh-tw': 'chi_tra',
-    'fr': 'fra',
-    'es': 'spa',
-    'de': 'deu',
     'ru': 'rus',
 }
 

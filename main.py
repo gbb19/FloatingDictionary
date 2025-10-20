@@ -1,5 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle, QWidget
+from functools import partial
+from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QActionGroup, QStyle, QWidget
 from PyQt5.QtCore import pyqtSignal, QObject, QPoint, QRect
 from PyQt5.QtGui import QCursor
 
@@ -8,29 +9,30 @@ from ui.overlay import Overlay
 from ui.tooltip import PersistentToolTip
 from core.worker import TranslationWorker
 from core.hotkey_manager import HotkeyManager
+from config import SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP
 
 class SignalEmitter(QObject):
-    """Emits signals to communicate between threads and components."""
     show_tooltip = pyqtSignal(str, 'PyQt_PyObject')
     pre_ocr_ready = pyqtSignal(list, 'PyQt_PyObject')
     blink_box = pyqtSignal(dict)
     enter_sentence_mode_signal = pyqtSignal()
     
 class MainApplication:
-    """The main application class that orchestrates all components."""
     def __init__(self, app):
         self.app = app
         self.emitter = SignalEmitter()
-        
-        # A dummy widget is used as a stable parent for the QMenu.
         self.dummy_parent_widget = QWidget()
+
+        # --- Language State ---
+        self.source_lang = SOURCE_LANG
+        self.target_lang = TARGET_LANG
         
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
-        self.worker = TranslationWorker(self.emitter)        
+        self.worker = TranslationWorker(self.emitter)
         self.hotkey_manager = HotkeyManager(
-            capture_callback=self.worker.add_job,
-            sentence_callback=self.emitter.enter_sentence_mode_signal.emit,
+            capture_callback=self.on_capture_hotkey,
+            sentence_callback=self.on_sentence_hotkey,
             exit_callback=self.on_exit,
             hide_callback=self.cancel_highlight
         )
@@ -38,7 +40,6 @@ class MainApplication:
         self.connect_signals()
 
     def setup_tray_icon(self):
-        """Initializes the system tray icon and its context menu."""
         icon = self.app.style().standardIcon(QStyle.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
         self.tray_icon.setToolTip("FloatingDictionary")
@@ -59,12 +60,58 @@ class MainApplication:
                 background-color: #555;
             }
         """)
+
+        # --- Source Language Menu ---
+        self.source_menu = QMenu("Source Language", self.tray_menu)
+        self.source_action_group = QActionGroup(self.source_menu)
+        self.source_action_group.setExclusive(True)
+
+        auto_action = self.source_menu.addAction("Auto")
+        auto_action.setCheckable(True)
+        auto_action.triggered.connect(partial(self.set_source_lang, 'auto'))
+        self.source_action_group.addAction(auto_action)
+        if self.source_lang == 'auto':
+            auto_action.setChecked(True)
+
+        for code, tesseract_code in LANG_CODE_MAP.items():
+            action = self.source_menu.addAction(f"{code} ({tesseract_code})")
+            action.setCheckable(True)
+            action.triggered.connect(partial(self.set_source_lang, code))
+            self.source_action_group.addAction(action)
+            if self.source_lang == code:
+                action.setChecked(True)
+        
+        self.tray_menu.addMenu(self.source_menu)
+
+        # --- Target Language Menu ---
+        self.target_menu = QMenu("Target Language", self.tray_menu)
+        self.target_action_group = QActionGroup(self.target_menu)
+        self.target_action_group.setExclusive(True)
+
+        for code, tesseract_code in LANG_CODE_MAP.items():
+            action = self.target_menu.addAction(f"{code} ({tesseract_code})")
+            action.setCheckable(True)
+            action.triggered.connect(partial(self.set_target_lang, code))
+            self.target_action_group.addAction(action)
+            if self.target_lang == code:
+                action.setChecked(True)
+
+        self.tray_menu.addMenu(self.target_menu)
+        self.tray_menu.addSeparator()
+
         self.exit_action = QAction("Exit", triggered=self.on_exit)
         self.tray_menu.addAction(self.exit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
 
+    def set_source_lang(self, lang_code):
+        self.source_lang = lang_code
+        print(f"Source language set to: {lang_code}")
+
+    def set_target_lang(self, lang_code):
+        self.target_lang = lang_code
+        print(f"Target language set to: {lang_code}")
+
     def connect_signals(self):
-        """Connects signals from various components to the appropriate slots."""
         self.emitter.show_tooltip.connect(self.on_show_tooltip)
         self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
         self.emitter.blink_box.connect(self.blink_highlight)
@@ -75,7 +122,6 @@ class MainApplication:
         self.overlay.dismiss_requested.connect(self.cancel_highlight)
 
     def run(self):
-        """Starts the application components and shows the initial notification."""
         self.worker.start()
         self.hotkey_manager.start()
         self.tray_icon.show()
@@ -91,56 +137,50 @@ class MainApplication:
         print(" - Press [Esc] to cancel or hide the window")
         print(" - Press [Ctrl + Alt + Q] to exit the program")
 
+    def on_capture_hotkey(self):
+        self.worker.add_job(self.source_lang, self.target_lang)
+
+    def on_sentence_hotkey(self):
+        self.emitter.enter_sentence_mode_signal.emit()
+
     def blink_highlight(self, box_to_blink):
-        """Enters the overlay's dismiss mode, highlighting the target box."""
         self.overlay.enter_dismiss_mode(box_to_blink)
 
     def on_show_tooltip(self, text, position_hint):
-        """Calculates the best position and shows the tooltip."""
-        pos = QCursor.pos() # Default to cursor position
+        pos = QCursor.pos()
         if isinstance(position_hint, dict):
-            # Position hint for a single word is a dictionary
             rect = QRect(position_hint['left'], position_hint['top'], position_hint['width'], position_hint['height'])
             pos = rect.topRight()
         elif isinstance(position_hint, QRect):
-            # Position hint for a sentence region is a QRect
             pos = position_hint.center()
         
         self.tooltip.show_at(pos, text)
 
-        # If this is the final translation result, highlight the area and bring the tooltip to the front.
         is_final_result = "<i>" not in text and text
         if is_final_result and position_hint:
             self.overlay.enter_dismiss_mode(position_hint)
             self.tooltip.raise_()
 
     def cancel_highlight(self):
-        """Hides the overlay and the tooltip, canceling any selection mode."""
         self.overlay.exit_selection_mode()
         self.tooltip.start_hide_animation()
 
     def enter_sentence_mode(self):
-        """Enters the region selection mode on the.overlay."""
         self.overlay.enter_region_selection_mode()
 
     def on_pre_ocr_ready(self, boxes, region):
-        """Once the worker has identified all words in a region, show them in the overlay."""
         self.overlay.enter_word_selection_mode(boxes, region)
 
     def on_region_selected(self, region):
-        """When the user selects a region, send it to the worker for pre-OCR."""
-        self.worker.add_pre_ocr_job(region)
+        self.worker.add_pre_ocr_job(region, self.source_lang, self.target_lang)
 
     def on_translate_all_requested(self, region):
-        """When the user wants to translate the whole region, send it to the worker."""
-        self.worker.add_ocr_and_translate_job(region, region)
+        self.worker.add_ocr_and_translate_job(region, region, self.source_lang, self.target_lang)
 
     def on_words_selected(self, words):
-        """When the user finishes selecting words, join them and send to the worker."""
         if not words:
             return
         
-        # Calculate the bounding box that contains all selected words.
         min_x = min(w['left'] for w in words)
         min_y = min(w['top'] for w in words)
         max_x = max(w['left'] + w['width'] for w in words)
@@ -149,10 +189,9 @@ class MainApplication:
 
         sentence = ' '.join([word['text'] for word in words])
         if sentence:
-            self.worker.add_sentence_job(sentence, bounding_rect)
+            self.worker.add_sentence_job(sentence, bounding_rect, self.source_lang, self.target_lang)
 
     def on_exit(self):
-        """Cleans up resources and exits the application."""
         print("Exiting program...")
         self.worker.stop()
         self.worker.join()
