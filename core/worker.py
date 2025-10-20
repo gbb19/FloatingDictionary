@@ -38,15 +38,13 @@ class TranslationWorker(threading.Thread):
         screenshot = pyautogui.screenshot(region=(left, top, CAPTURE_WIDTH, CAPTURE_HEIGHT))
         self.queue.put({'screenshot': screenshot, 'cursor_pos': (x, y), 'region_top_left': (left, top)})
 
-    def add_sentence_job(self, text_or_region):
+    def add_sentence_job(self, sentence, bounding_rect):
         """Captures a screenshot of a specific region and adds it as a sentence job."""
-        if isinstance(text_or_region, str):
-            # If we already have the text, just translate it
-            self.queue.put({'text': text_or_region, 'is_sentence': True})
-        else:
-            # If we have a region, take a screenshot
-            screenshot = pyautogui.screenshot(region=text_or_region)
-            self.queue.put({'screenshot': screenshot, 'is_sentence': True})
+        self.queue.put({
+            'text': sentence, 
+            'is_sentence': True,
+            'bounding_rect': bounding_rect
+        })
 
     def add_pre_ocr_job(self, region):
         """Captures a user-defined region for pre-OCR to find all word boxes for selection."""
@@ -60,10 +58,14 @@ class TranslationWorker(threading.Thread):
             'original_region': region # --- [เพิ่ม] ส่ง region ต้นฉบับไปด้วย ---
         })
 
-    def add_ocr_and_translate_job(self, region):
+    def add_ocr_and_translate_job(self, region, bounding_rect):
         """Performs OCR and then immediately translates the entire result."""
         rect = region.getRect()
-        self.queue.put({'screenshot': pyautogui.screenshot(region=rect), 'is_ocr_and_translate': True})
+        self.queue.put({
+            'screenshot': pyautogui.screenshot(region=rect), 
+            'is_ocr_and_translate': True,
+            'bounding_rect': bounding_rect
+        })
 
     def stop(self):
         """Signals the worker thread to stop."""
@@ -75,7 +77,7 @@ class TranslationWorker(threading.Thread):
         
         if job.get('is_ocr_and_translate', False):
             # --- [เพิ่ม] จัดการ Job ประเภท "แปลทั้งหมด" ---
-            self._process_sentence(screenshot)
+            self._process_sentence(screenshot, job.get('bounding_rect'))
             return
 
         if job.get('is_pre_ocr', False):
@@ -83,10 +85,9 @@ class TranslationWorker(threading.Thread):
             return
 
         if job.get('is_sentence', False):
-            if 'text' in job:
-                self._process_sentence(job['text'])
-            elif screenshot:
-                self._process_sentence(screenshot)
+            source = job.get('text') or screenshot
+            if source:
+                self._process_sentence(source, job.get('bounding_rect'))
             return
 
         cursor_x, cursor_y = job['cursor_pos']
@@ -96,7 +97,7 @@ class TranslationWorker(threading.Thread):
             data = pytesseract.image_to_data(screenshot, lang='eng', output_type=pytesseract.Output.DICT)
         except pytesseract.pytesseract.TesseractError as e:
             print(f"Tesseract Error: {e}")
-            self.emitter.show_tooltip.emit("<i>Tesseract Error</i>")
+            self.emitter.show_tooltip.emit("<i>Tesseract Error</i>", None)
             return
 
         text_boxes = []
@@ -116,15 +117,15 @@ class TranslationWorker(threading.Thread):
                 break
         
         if found_box:
-            self.emitter.show_tooltip.emit("<i>Loading...</i>")
+            self.emitter.show_tooltip.emit("<i>Loading...</i>", found_box)
             self.emitter.blink_box.emit(found_box) # --- [แก้ไข] เปลี่ยนมาใช้การส่ง Signal ---
             self._translate_and_show(found_box)
         else:
-            self.emitter.show_tooltip.emit("") # Just hide the tooltip
+            self.emitter.show_tooltip.emit("", None) # Just hide the tooltip
 
-    def _process_sentence(self, source):
+    def _process_sentence(self, source, bounding_rect=None):
         """Processes an entire image as a single sentence for translation."""
-        self.emitter.show_tooltip.emit("<i>Reading sentence...</i>")
+        self.emitter.show_tooltip.emit("<i>Reading sentence...</i>", bounding_rect)
         sentence = ""
         if isinstance(source, str):
             sentence = source
@@ -134,17 +135,17 @@ class TranslationWorker(threading.Thread):
                 sentence = pytesseract.image_to_string(source, lang='eng')
                 sentence = sentence.replace('\n', ' ').replace('-\n', '').strip()
             except pytesseract.pytesseract.TesseractError as e:
-                self.emitter.show_tooltip.emit(f"<i>Tesseract Error: {e}</i>")
+                self.emitter.show_tooltip.emit(f"<i>Tesseract Error: {e}</i>", bounding_rect)
                 return
 
         if not sentence:
-            self.emitter.show_tooltip.emit("") # Just hide the tooltip
+            self.emitter.show_tooltip.emit("", bounding_rect) # Just hide the tooltip
             return
 
-        self.emitter.show_tooltip.emit("<i>Translating sentence...</i>")
+        self.emitter.show_tooltip.emit("<i>Translating sentence...</i>", bounding_rect)
         google_translation = get_google_translation_sync(sentence)
         formatted_text = f"<p style='font-size: 14pt;'><b>EN:</b> {sentence}</p><hr><p style='font-size: 14pt;'><b>TH:</b> {google_translation}</p>"
-        self.emitter.show_tooltip.emit(formatted_text)
+        self.emitter.show_tooltip.emit(formatted_text, bounding_rect)
 
     def _process_pre_ocr(self, screenshot, region_top_left, job):
         """Performs OCR and emits the found word boxes along with the original region."""
@@ -189,4 +190,4 @@ class TranslationWorker(threading.Thread):
         
         if self.last_processed_box == box:
             print(f"กำลังแสดง Tooltip สำหรับ: {search_word}")
-            self.emitter.show_tooltip.emit(formatted_translation)
+            self.emitter.show_tooltip.emit(formatted_translation, box)

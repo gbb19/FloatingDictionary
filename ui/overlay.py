@@ -52,7 +52,10 @@ class Overlay(QWidget):
     def set_box(self, box_data):
         """Sets the bounding box to be drawn on the overlay."""
         if box_data:
-            self.box_to_draw = QRect(box_data['left'], box_data['top'], box_data['width'], box_data['height'])
+            if isinstance(box_data, QRect):
+                self.box_to_draw = box_data
+            elif isinstance(box_data, dict):
+                self.box_to_draw = QRect(box_data['left'], box_data['top'], box_data['width'], box_data['height'])
         else:
             self.box_to_draw = None
         self.update()

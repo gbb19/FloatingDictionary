@@ -1,7 +1,7 @@
 import sys
 import threading
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle, QWidget
-from PyQt5.QtCore import pyqtSignal, QObject
+from PyQt5.QtCore import pyqtSignal, QObject, QPoint, QRect
 from PyQt5.QtGui import QCursor
 
 from services.tesseract_setup import initialize_tesseract
@@ -14,7 +14,7 @@ from core.hotkey_manager import HotkeyManager
 # 1. Application Setup
 # -------------------------------------------------------------------
 class SignalEmitter(QObject):
-    show_tooltip = pyqtSignal(str)
+    show_tooltip = pyqtSignal(str, 'PyQt_PyObject')
     pre_ocr_ready = pyqtSignal(list, 'PyQt_PyObject') # --- [แก้ไข] เพิ่ม Argument สำหรับ region ---
     blink_box = pyqtSignal(dict)
     enter_sentence_mode_signal = pyqtSignal()
@@ -65,7 +65,7 @@ class MainApplication:
         self.tray_icon.setContextMenu(self.tray_menu)
 
     def connect_signals(self):
-        self.emitter.show_tooltip.connect(lambda text: self.tooltip.show_at(QCursor.pos(), text))
+        self.emitter.show_tooltip.connect(self.on_show_tooltip)
         self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
         self.emitter.blink_box.connect(self.blink_highlight)
         self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode)
@@ -94,10 +94,30 @@ class MainApplication:
         # --- [แก้ไข] เปลี่ยนมาใช้ dismiss_mode ของ Overlay ---
         self.overlay.enter_dismiss_mode(box_to_blink)
 
+    def on_show_tooltip(self, text, position_hint):
+        """Calculates the best position and shows the tooltip."""
+        pos = QCursor.pos() # Default to cursor position
+        if isinstance(position_hint, dict):
+            # For single word from Ctrl+Alt+D
+            rect = QRect(position_hint['left'], position_hint['top'], position_hint['width'], position_hint['height'])
+            pos = rect.topRight()
+        elif isinstance(position_hint, QRect):
+            # For sentence region from Ctrl+Alt+S
+            pos = position_hint.center()
+        
+        self.tooltip.show_at(pos, text)
+
+        # --- [เพิ่ม] เมื่อแสดงผลลัพธ์สุดท้าย ให้ทำการไฮไลท์พื้นที่นั้นๆ ด้วย ---
+        is_final_result = "<i>" not in text and text
+        if is_final_result and position_hint:
+            self.overlay.enter_dismiss_mode(position_hint)
+            # --- [แก้ไข] ดึง Tooltip กลับขึ้นมาอยู่บนสุดเสมอ ---
+            self.tooltip.raise_()
+
     def cancel_highlight(self):
         # --- [แก้ไข] รวมการยกเลิกทั้งหมดไว้ในที่เดียว ---
         self.overlay.exit_selection_mode()
-        self.emitter.show_tooltip.emit("")
+        self.tooltip.start_hide_animation()
 
     def enter_sentence_mode(self):
         self.overlay.enter_region_selection_mode()
@@ -110,12 +130,22 @@ class MainApplication:
         self.worker.add_pre_ocr_job(region)
 
     def on_translate_all_requested(self, region):
-        self.worker.add_ocr_and_translate_job(region)
+        self.worker.add_ocr_and_translate_job(region, region)
 
     def on_words_selected(self, words):
+        if not words:
+            return
+        
+        # Calculate the bounding box of all selected words
+        min_x = min(w['left'] for w in words)
+        min_y = min(w['top'] for w in words)
+        max_x = max(w['left'] + w['width'] for w in words)
+        max_y = max(w['top'] + w['height'] for w in words)
+        bounding_rect = QRect(min_x, min_y, max_x - min_x, max_y - min_y)
+
         sentence = ' '.join([word['text'] for word in words])
         if sentence:
-            self.worker.add_sentence_job(sentence)
+            self.worker.add_sentence_job(sentence, bounding_rect)
 
     def on_exit(self):
         print("กำลังปิดโปรแกรม...")
