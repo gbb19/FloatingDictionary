@@ -139,8 +139,11 @@ class TranslationWorker(threading.Thread):
             return
 
         self.emitter.show_tooltip.emit("<i>Translating sentence...</i>", bounding_rect)
-        google_translation = get_google_translation_sync(sentence, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+        google_result = get_google_translation_sync(sentence, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
         
+        # Handle cases where translation might fail and return a string
+        google_translation = google_result.text if hasattr(google_result, 'text') else str(google_result)
+
         formatted_text = (f"<p style='font-size: 14pt;'><b>{SOURCE_LANG.upper()}:</b> {sentence}</p><hr>"
                         f"<p style='font-size: 14pt;'><b>{TARGET_LANG.upper()}:</b> {google_translation}</p>")
         self.emitter.show_tooltip.emit(formatted_text, bounding_rect)
@@ -176,18 +179,30 @@ class TranslationWorker(threading.Thread):
 
         if cache_key not in self.translation_cache:
             print(f"Searching online for: {search_word}")
+
+            # Always get Google translation first to detect the source language.
+            google_result = get_google_translation_sync(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+
+            # Handle cases where translation might fail and return a string error
+            if not hasattr(google_result, 'src'):
+                self.emitter.show_tooltip.emit(str(google_result), box)
+                return
+
+            detected_lang = google_result.src
+            google_translation = google_result.text
+
+            # Now, check if we should also fetch from Longdo.
             longdo_data = None
-            if SOURCE_LANG == 'en' and TARGET_LANG == 'th':
+            if TARGET_LANG == 'th' and detected_lang == 'en':
+                print(f"Detected English word '{search_word}', fetching from Longdo...")
                 soup = fetch_longdo_word(search_word)
                 longdo_data = parse_longdo_data(soup) if soup else None
-            
-            google_translation = get_google_translation_sync(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
             
             formatted_translation = format_combined_data(
                 longdo_data, 
                 google_translation, 
                 search_word,
-                SOURCE_LANG,
+                detected_lang, # Use the detected language for display
                 TARGET_LANG
             )
             self.translation_cache[cache_key] = formatted_translation

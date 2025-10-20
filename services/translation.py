@@ -14,7 +14,7 @@ async def async_translate(text, dest_lang, src_lang):
     translator = Translator()
     try:
         result = await translator.translate(text, src=src_lang, dest=dest_lang)
-        return result.text
+        return result
     except Exception as e:
         print(f"Google Translate Error: {e}")
         return f"Google Error: {e}"

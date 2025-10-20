@@ -4,33 +4,49 @@ OCR Abstraction Layer
 This module provides a unified interface for different OCR engines.
 """
 import pytesseract
-from config import OCR_ENGINE, LANG_CODE_MAP
+from config import OCR_ENGINE, LANG_CODE_MAP, AUTO_DETECT_LANGUAGES
+
+# --- Base Classes & Exceptions ---
 
 class OcrError(Exception):
     """Custom exception for OCR-related errors."""
     pass
 
-class TesseractOcrEngine:
-    """OCR engine implementation using Tesseract."""
+class OcrEngine:
+    """Abstract base class for OCR engines."""
+    def image_to_data(self, image: Image, lang_code: str) -> dict:
+        raise NotImplementedError
 
-    def image_to_data(self, image, lang_code: str) -> dict:
-        """Performs OCR on an image and returns detailed data about each word."""
-        tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+    def image_to_string(self, image: Image, lang_code: str) -> str:
+        raise NotImplementedError
+
+# --- Tesseract Implementation ---
+
+class TesseractOcrEngine(OcrEngine):
+    """OCR engine implementation using Tesseract."""
+    def image_to_data(self, image: Image, lang_code: str) -> dict:
+        if lang_code == 'auto':
+            tesseract_lang = '+'.join(AUTO_DETECT_LANGUAGES)
+        else:
+            tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+        
         try:
             return pytesseract.image_to_data(image, lang=tesseract_lang, output_type=pytesseract.Output.DICT)
         except pytesseract.pytesseract.TesseractError as e:
             print(f"Tesseract Error: {e}")
-            # Re-raise as a generic OcrError for the worker to catch
-            raise OcrError(f"Tesseract Error for language '{tesseract_lang}'. Please ensure the language data is installed.") from e
+            raise OcrError(f"Tesseract Error for lang '{tesseract_lang}'. Is the language data installed?") from e
 
-    def image_to_string(self, image, lang_code: str) -> str:
-        """Performs OCR on an image and returns the recognized text as a single string."""
-        tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+    def image_to_string(self, image: Image, lang_code: str) -> str:
+        if lang_code == 'auto':
+            tesseract_lang = '+'.join(AUTO_DETECT_LANGUAGES)
+        else:
+            tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+
         try:
             return pytesseract.image_to_string(image, lang=tesseract_lang)
         except pytesseract.pytesseract.TesseractError as e:
             print(f"Tesseract Error: {e}")
-            raise OcrError(f"Tesseract Error for language '{tesseract_lang}'.") from e
+            raise OcrError(f"Tesseract Error for lang '{tesseract_lang}'.") from e
 
 
 # --- Factory Function ---
