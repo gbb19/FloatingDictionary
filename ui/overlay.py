@@ -72,8 +72,8 @@ class Overlay(QWidget):
             painter.setBrush(QColor(60, 179, 113, 120)) # SeaGreen
             for box in self.selected_word_boxes:
                 painter.drawRect(QRect(box['left'], box['top'], box['width'], box['height']))
-
-            # Draw hovered box
+            
+            # --- [แก้ไข] กลับมาวาดกรอบสีฟ้าที่คำที่กำลังชี้ ---
             if self.hovered_word_box and self.hovered_word_box not in self.selected_word_boxes:
                 painter.setBrush(QColor(51, 175, 255, 120)) # Light Blue
                 box = self.hovered_word_box
@@ -132,14 +132,16 @@ class Overlay(QWidget):
             self.update()
         elif self.is_selection_mode:
             self.is_mouse_pressed = True
-            self.selected_word_boxes = [] # Reset word selection
-            self.mouseMoveEvent(event) # Add the first word on click
+            self.selected_word_boxes = [] # --- [แก้ไข] รีเซ็ตรายการคำที่เลือก ---
+            self.mouseMoveEvent(event) # --- [เพิ่ม] เรียกใช้ทันทีเพื่อเลือกคำแรกที่คลิก ---
+            self.update()
 
     def mouseMoveEvent(self, event):
         if self.is_region_selection_mode and self.origin_point:
             self.selection_rect = QRect(self.origin_point, event.pos()).normalized()
             self.update()
         elif self.is_selection_mode:
+            # --- [แก้ไข] กลับมาใช้ Logic การเลือกทีละคำ ---
             current_pos = event.pos()
             new_hovered_box = None
             for box in self.all_word_boxes:
@@ -147,7 +149,7 @@ class Overlay(QWidget):
                     new_hovered_box = box
                     if self.is_mouse_pressed and box not in self.selected_word_boxes:
                         self.selected_word_boxes.append(box)
-                    break
+                    break # --- [สำคัญ] หยุดเมื่อเจอคำแรก ---
             
             if self.hovered_word_box != new_hovered_box:
                 self.hovered_word_box = new_hovered_box
@@ -163,7 +165,29 @@ class Overlay(QWidget):
             self.exit_selection_mode()
         elif self.is_selection_mode:
             self.is_mouse_pressed = False
-            # Sort selected words by line, then by horizontal position
-            self.selected_word_boxes.sort(key=lambda b: (b['top'] // 10, b['left']))
+            
+            # --- [แก้ไข] นำการจัดเรียงคำศัพท์กลับมา แต่ใช้ Algorithm ที่ดีกว่าเดิม ---
+            # This new logic correctly sorts words into lines and then sorts each line.
+            if self.selected_word_boxes:
+                # Sort by vertical position first to group lines
+                sorted_by_y = sorted(self.selected_word_boxes, key=lambda b: b['top'])
+                
+                lines = []
+                current_line = [sorted_by_y[0]]
+                
+                for i in range(1, len(sorted_by_y)):
+                    prev_box = current_line[-1]
+                    current_box = sorted_by_y[i]
+                    
+                    # Check if the vertical center of the current box is within the previous box's height
+                    if (current_box['top'] + current_box['height'] / 2) < (prev_box['top'] + prev_box['height']):
+                        current_line.append(current_box)
+                    else:
+                        lines.append(sorted(current_line, key=lambda b: b['left']))
+                        current_line = [current_box]
+                lines.append(sorted(current_line, key=lambda b: b['left']))
+                
+                self.selected_word_boxes = [box for line in lines for box in line]
+
             self.words_selected.emit(self.selected_word_boxes)
             self.exit_selection_mode()

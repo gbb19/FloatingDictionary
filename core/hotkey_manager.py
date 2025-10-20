@@ -18,32 +18,33 @@ class HotkeyManager:
     def on_press(self, key):
         """Callback function for key presses."""
         try:
-            # Track Ctrl and Alt keys
+            # Track modifier keys
             if key in {pynput_keyboard.Key.ctrl_l, pynput_keyboard.Key.ctrl_r, pynput_keyboard.Key.ctrl}:
                 self.current_keys.add('ctrl')
-            
-            # Check for Ctrl+D (char code '\x04')
-            if hasattr(key, 'char') and key.char == '\x04':
-                if 'ctrl' in self.current_keys:
-                    print("Hotkey 'Ctrl+D' pressed (Translate Word).")
-                    self.capture_callback()
-            
-            # Check for Ctrl+S (char code '\x13')
-            if hasattr(key, 'char') and key.char == '\x13':
-                if 'ctrl' in self.current_keys:
-                    print("Hotkey 'Ctrl+S' pressed (Translate Sentence).")
-                    self.sentence_callback()
+            if key in {pynput_keyboard.Key.alt_l, pynput_keyboard.Key.alt_r, pynput_keyboard.Key.alt}:
+                self.current_keys.add('alt')
+
+            # Check for hotkey combinations using virtual key codes (vk)
+            # This is more reliable for combinations with modifiers than using key.char
+            if 'ctrl' in self.current_keys and 'alt' in self.current_keys:
+                if hasattr(key, 'vk'):
+                    # Ctrl+Alt+D (D = 68)
+                    if key.vk == 68:
+                        print("Hotkey 'Ctrl+Alt+D' pressed (Translate Word).")
+                        self.capture_callback()
+                    # Ctrl+Alt+S (S = 83)
+                    elif key.vk == 83:
+                        print("Hotkey 'Ctrl+Alt+S' pressed (Translate Sentence).")
+                        self.sentence_callback()
+                    # Ctrl+Alt+Q (Q = 81)
+                    elif key.vk == 81:
+                        print("Hotkey 'Ctrl+Alt+Q' pressed. Exiting...")
+                        self.exit_callback()
             
             # Check for Escape key
             if key == pynput_keyboard.Key.esc:
                 print("Hotkey 'Esc' pressed.")
                 self.hide_callback()
-            
-            # Check for Ctrl+Q (char code '\x11')
-            if hasattr(key, 'char') and key.char == '\x11':
-                if 'ctrl' in self.current_keys:
-                    print("Hotkey 'Ctrl+Q' pressed. Exiting...")
-                    self.exit_callback()
 
         except AttributeError:
             pass
@@ -53,6 +54,8 @@ class HotkeyManager:
         try:
             if key in {pynput_keyboard.Key.ctrl_l, pynput_keyboard.Key.ctrl_r, pynput_keyboard.Key.ctrl}:
                 self.current_keys.discard('ctrl')
+            if key in {pynput_keyboard.Key.alt_l, pynput_keyboard.Key.alt_r, pynput_keyboard.Key.alt}:
+                self.current_keys.discard('alt')
         except (AttributeError, KeyError):
             pass
 

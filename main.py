@@ -18,6 +18,7 @@ class SignalEmitter(QObject):
     show_tooltip = pyqtSignal(str)
     pre_ocr_ready = pyqtSignal(list)
     blink_box = pyqtSignal(dict)
+    enter_sentence_mode_signal = pyqtSignal()
     
 class MainApplication:
     def __init__(self, app):
@@ -28,7 +29,7 @@ class MainApplication:
         self.worker = TranslationWorker(self.emitter)
         self.hotkey_manager = HotkeyManager(
             capture_callback=self.worker.add_job,
-            sentence_callback=self.enter_sentence_mode,
+            sentence_callback=self.emitter.enter_sentence_mode_signal.emit, # --- [แก้ไข] ---
             exit_callback=self.on_exit,
             hide_callback=self.cancel_highlight
         )
@@ -48,6 +49,7 @@ class MainApplication:
         self.emitter.show_tooltip.connect(lambda text: self.tooltip.show_at(QCursor.pos(), text))
         self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
         self.emitter.blink_box.connect(self.blink_highlight)
+        self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode) # --- [เพิ่ม] ---
         self.overlay.region_selected.connect(self.on_region_selected)
         self.overlay.words_selected.connect(self.on_words_selected)
 
@@ -57,15 +59,15 @@ class MainApplication:
         self.tray_icon.show()
         self.tray_icon.showMessage(
             "Floating Dictionary",
-            "โปรแกรมพร้อมทำงานแล้ว!\n- กด Ctrl+D เพื่อแปลคำ\n- กด Ctrl+S เพื่อแปลประโยค",
+            "โปรแกรมพร้อมทำงานแล้ว!\n- กด Ctrl+Alt+D เพื่อแปลคำ\n- กด Ctrl+Alt+S เพื่อแปลประโยค",
             QSystemTrayIcon.Information,
             2000
         )
         print("โปรแกรมแปลภาษา (Longdo + Google) พร้อมทำงาน!")
-        print(" - กด [Ctrl + D] เพื่อแปลคำศัพท์ใต้เมาส์")
-        print(" - กด [Ctrl + S] เพื่อเข้าโหมดเลือกประโยค (ลากเมาส์เพื่อเลือก)")
+        print(" - กด [Ctrl + Alt + D] เพื่อแปลคำศัพท์ใต้เมาส์")
+        print(" - กด [Ctrl + Alt + S] เพื่อเข้าโหมดเลือกประโยค (ลากเมาส์เพื่อเลือก)")
         print(" - กด [Esc] เพื่อยกเลิก/ซ่อนหน้าต่าง")
-        print(" - กด [Ctrl + Q] เพื่อปิดโปรแกรม")
+        print(" - กด [Ctrl + Alt + Q] เพื่อปิดโปรแกรม")
 
     def blink_highlight(self, box_to_blink):
         self.overlay.show()
