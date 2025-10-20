@@ -80,8 +80,9 @@ class Overlay(QWidget):
                 painter.drawRect(QRect(box['left'], box['top'], box['width'], box['height']))
 
         if self.box_to_draw:
-            pen = QPen(Qt.red, 2)
-            painter.setPen(pen)
+            # --- [แก้ไข] เปลี่ยนจากการวาดเส้นขอบเป็นการเติมสีให้เหมือนโหมดเลือกประโยค ---
+            painter.setPen(Qt.NoPen) # ไม่ต้องมีเส้นขอบ
+            painter.setBrush(QColor(60, 179, 113, 120)) # SeaGreen, semi-transparent
             painter.drawRect(self.box_to_draw)
 
     def enter_region_selection_mode(self):
