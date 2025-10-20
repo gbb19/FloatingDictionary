@@ -1,7 +1,6 @@
 import sys
 import threading
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle, QDesktopWidget
+from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle, QWidget
 from PyQt5.QtCore import pyqtSignal, QObject
 from PyQt5.QtGui import QCursor
 
@@ -24,12 +23,14 @@ class MainApplication:
     def __init__(self, app):
         self.app = app
         self.emitter = SignalEmitter()
+        # --- [เพิ่ม] สร้าง Widget ที่มองไม่เห็นเพื่อเป็น Parent ที่ถูกต้องสำหรับ QMenu ---
+        self.dummy_parent_widget = QWidget()
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
         self.worker = TranslationWorker(self.emitter)
         self.hotkey_manager = HotkeyManager(
             capture_callback=self.worker.add_job,
-            sentence_callback=self.emitter.enter_sentence_mode_signal.emit, # --- [แก้ไข] ---
+            sentence_callback=self.emitter.enter_sentence_mode_signal.emit,
             exit_callback=self.on_exit,
             hide_callback=self.cancel_highlight
         )
@@ -40,16 +41,34 @@ class MainApplication:
         icon = self.app.style().standardIcon(QStyle.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
         self.tray_icon.setToolTip("FloatingDictionary")
-        tray_menu = QMenu()
-        exit_action = QAction("Exit", triggered=self.on_exit)
-        tray_menu.addAction(exit_action)
-        self.tray_icon.setContextMenu(tray_menu)
+        
+        # --- [แก้ไข] สร้าง QMenu โดยมี Parent ที่เป็น QWidget เพื่อความเสถียร ---
+        self.tray_menu = QMenu(self.dummy_parent_widget)
+        # --- [เพิ่ม] กำหนดสไตล์ให้เมนูดูสวยงามและทันสมัยขึ้น ---
+        self.tray_menu.setStyleSheet("""
+            QMenu {
+                background-color: #333;
+                color: #f0f0f0;
+                border: 1px solid #555;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 5px 25px 5px 20px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected {
+                background-color: #555;
+            }
+        """)
+        self.exit_action = QAction("Exit", triggered=self.on_exit) # --- [แก้ไข] ทำให้เป็น instance variable ---
+        self.tray_menu.addAction(self.exit_action)
+        self.tray_icon.setContextMenu(self.tray_menu)
 
     def connect_signals(self):
         self.emitter.show_tooltip.connect(lambda text: self.tooltip.show_at(QCursor.pos(), text))
         self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
         self.emitter.blink_box.connect(self.blink_highlight)
-        self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode) # --- [เพิ่ม] ---
+        self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode)
         self.overlay.region_selected.connect(self.on_region_selected)
         self.overlay.words_selected.connect(self.on_words_selected)
 
