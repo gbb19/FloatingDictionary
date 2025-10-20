@@ -4,6 +4,8 @@ Handles the setup and initialization of Tesseract OCR.
 
 import sys
 import os
+import platform
+import subprocess
 import pytesseract
 from utils.app_logger import debug_print
 
@@ -23,8 +25,20 @@ def get_executable_path(name):
 
 def initialize_tesseract():
     """
-    Sets up the TESSDATA_PREFIX environment variable and verifies Tesseract installation.
+    Sets up Tesseract and applies a patch to hide subprocess console on Windows.
     """
+    # --- Monkey-patch subprocess.Popen to hide console window on Windows ---
+    if platform.system() == "Windows":
+        _original_popen = subprocess.Popen
+
+        def _patched_popen(*args, **kwargs):
+            if "creationflags" not in kwargs:
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            return _original_popen(*args, **kwargs)
+
+        subprocess.Popen = _patched_popen
+        debug_print("Applied Windows-specific patch to hide subprocess consoles.")
+
     try:
         # Set TESSDATA_PREFIX environment variable
         tessdata_dir = get_executable_path(os.path.join("Tesseract-OCR", "tessdata"))
