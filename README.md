@@ -75,3 +75,8 @@
     - `Ctrl + Q`: ปิดโปรแกรมทั้งหมด
 
 ---
+
+## การ Build
+```bash
+pyinstaller --name "FloatingDictionary" --onefile --windowed --add-data "C:\Users\gbbtn\AppData\Local\Programs\Tesseract-OCR;Tesseract-OCR" main.py
+```
