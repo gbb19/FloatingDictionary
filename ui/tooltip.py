@@ -67,12 +67,6 @@ class PersistentToolTip(QWidget):
         self.previous_focus_hwnd = None
         self.hide()
 
-    def keyPressEvent(self, event):
-        """Handle key presses when the widget has focus."""
-        if event.key() == Qt.Key_Escape:
-            self.start_hide_animation()
-            event.accept()
-
     def paintEvent(self, event):
         """Custom paint event to draw the rounded-corner background."""
         painter = QPainter(self)
@@ -84,7 +78,8 @@ class PersistentToolTip(QWidget):
     def on_hide_finished(self):
         """Slot called when the hide animation finishes."""
         self.hide()
-        force_set_focus(self.previous_focus_hwnd)
+        # --- [ลบออก] ไม่จำเป็นต้องคืน Focus แล้ว เพราะเราไม่ได้ขโมยมาตั้งแต่แรก ---
+        # force_set_focus(self.previous_focus_hwnd)
 
     def start_hide_animation(self):
         """Starts the fade-out animation."""
@@ -154,25 +149,4 @@ class PersistentToolTip(QWidget):
             pass # Was not connected
         self.hide_animation.finished.connect(self.on_hide_finished)
 
-        # Steal focus to allow Esc key to close the tooltip
-        self._steal_focus()
-
-    def _steal_focus(self):
-        """
-        Uses ctypes to steal focus from the current foreground window and give it to this tooltip.
-        Saves the previous window handle to restore focus later.
-        """
-        import ctypes
-        try:
-            our_hwnd = int(self.winId())
-            self.previous_focus_hwnd = ctypes.windll.user32.GetForegroundWindow()
-            
-            if self.previous_focus_hwnd and our_hwnd != self.previous_focus_hwnd:
-                our_thread_id = ctypes.windll.kernel32.GetCurrentThreadId()
-                foreground_thread_id = ctypes.windll.user32.GetWindowThreadProcessId(self.previous_focus_hwnd, None)
-                
-                ctypes.windll.user32.AttachThreadInput(foreground_thread_id, our_thread_id, True)
-                ctypes.windll.user32.SetForegroundWindow(our_hwnd)
-                ctypes.windll.user32.AttachThreadInput(foreground_thread_id, our_thread_id, False)
-        except Exception as e:
-            print(f"Focus stealing error: {e}")
+        # --- [ลบออก] ไม่ต้องขโมย Focus อีกต่อไป ---

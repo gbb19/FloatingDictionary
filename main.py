@@ -1,7 +1,7 @@
 import sys
 import threading
-
 from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle
+from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QStyle, QDesktopWidget
 from PyQt5.QtCore import pyqtSignal, QObject
 from PyQt5.QtGui import QCursor
 
@@ -16,76 +16,106 @@ from core.hotkey_manager import HotkeyManager
 # -------------------------------------------------------------------
 class SignalEmitter(QObject):
     show_tooltip = pyqtSignal(str)
+    pre_ocr_ready = pyqtSignal(list)
+    blink_box = pyqtSignal(dict)
+    
+class MainApplication:
+    def __init__(self, app):
+        self.app = app
+        self.emitter = SignalEmitter()
+        self.overlay = Overlay()
+        self.tooltip = PersistentToolTip()
+        self.worker = TranslationWorker(self.emitter)
+        self.hotkey_manager = HotkeyManager(
+            capture_callback=self.worker.add_job,
+            sentence_callback=self.enter_sentence_mode,
+            exit_callback=self.on_exit,
+            hide_callback=self.cancel_highlight
+        )
+        self.setup_tray_icon()
+        self.connect_signals()
 
-def blink_highlight(box_to_blink):
-    """
-    ฟังก์ชันสำหรับทำให้กรอบไฮไลท์กระพริบ 2 ครั้งแล้วหายไป
-    ใช้ threading.Timer เพื่อไม่ให้ block การทำงานหลัก
-    """
-    # กระพริบครั้งที่ 1
-    overlay.set_box(box_to_blink)
-    threading.Timer(0.15, lambda: overlay.set_box(None)).start()
-    # กระพริบครั้งที่ 2
-    threading.Timer(0.30, lambda: overlay.set_box(box_to_blink)).start()
-    # ซ่อนถาวร
-    threading.Timer(0.45, lambda: overlay.set_box(None)).start()
+    def setup_tray_icon(self):
+        icon = self.app.style().standardIcon(QStyle.SP_ComputerIcon)
+        self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
+        self.tray_icon.setToolTip("FloatingDictionary")
+        tray_menu = QMenu()
+        exit_action = QAction("Exit", triggered=self.on_exit)
+        tray_menu.addAction(exit_action)
+        self.tray_icon.setContextMenu(tray_menu)
 
-def cancel_highlight():
-    """Hides the highlight overlay and the tooltip."""
-    overlay.set_box(None)
-    emitter.show_tooltip.emit("") # ส่งสัญญาณให้ซ่อน Tooltip ที่แสดงอยู่
+    def connect_signals(self):
+        self.emitter.show_tooltip.connect(lambda text: self.tooltip.show_at(QCursor.pos(), text))
+        self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
+        self.emitter.blink_box.connect(self.blink_highlight)
+        self.overlay.region_selected.connect(self.on_region_selected)
+        self.overlay.words_selected.connect(self.on_words_selected)
 
-def on_exit():
-    """Gracefully shuts down the application."""
-    print("กำลังปิดโปรแกรม...")
-    worker.stop()
-    worker.join()
-    tray_icon.hide()
-    app.quit()
+    def run(self):
+        self.worker.start()
+        self.hotkey_manager.start()
+        self.tray_icon.show()
+        self.tray_icon.showMessage(
+            "Floating Dictionary",
+            "โปรแกรมพร้อมทำงานแล้ว!\n- กด Ctrl+D เพื่อแปลคำ\n- กด Ctrl+S เพื่อแปลประโยค",
+            QSystemTrayIcon.Information,
+            2000
+        )
+        print("โปรแกรมแปลภาษา (Longdo + Google) พร้อมทำงาน!")
+        print(" - กด [Ctrl + D] เพื่อแปลคำศัพท์ใต้เมาส์")
+        print(" - กด [Ctrl + S] เพื่อเข้าโหมดเลือกประโยค (ลากเมาส์เพื่อเลือก)")
+        print(" - กด [Esc] เพื่อยกเลิก/ซ่อนหน้าต่าง")
+        print(" - กด [Ctrl + Q] เพื่อปิดโปรแกรม")
 
-if __name__ == "__main__":
-    # 1. Initialize Tesseract
+    def blink_highlight(self, box_to_blink):
+        self.overlay.show()
+        self.overlay.set_box(box_to_blink)
+        threading.Timer(0.15, lambda: self.overlay.set_box(None)).start()
+        threading.Timer(0.30, lambda: self.overlay.set_box(box_to_blink)).start()
+        threading.Timer(0.45, lambda: self.overlay.hide()).start()
+
+    def cancel_highlight(self):
+        if self.overlay.is_selection_mode or self.overlay.is_region_selection_mode:
+            self.overlay.exit_selection_mode()
+        else:
+            self.overlay.hide()
+        self.emitter.show_tooltip.emit("")
+
+    def enter_sentence_mode(self):
+        self.overlay.enter_region_selection_mode()
+
+    def on_pre_ocr_ready(self, boxes):
+        self.overlay.enter_word_selection_mode(boxes)
+
+    def on_region_selected(self, region):
+        self.worker.add_pre_ocr_job(region)
+
+    def on_words_selected(self, words):
+        sentence = ' '.join([word['text'] for word in words])
+        if sentence:
+            self.worker.add_sentence_job(sentence)
+
+    def on_exit(self):
+        print("กำลังปิดโปรแกรม...")
+        self.worker.stop()
+        self.worker.join()
+        self.tray_icon.hide()
+        self.app.quit()
+
+def main():
     if not initialize_tesseract():
         sys.exit(1)
 
-    # 2. Create the PyQt Application
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
-    # 3. Create UI Components
-    emitter = SignalEmitter()
-    overlay = Overlay()
-    tooltip = PersistentToolTip()
-    
-    overlay.show()
-    
-    # 4. Setup System Tray Icon
-    icon = app.style().standardIcon(QStyle.SP_ComputerIcon)
-    tray_icon = QSystemTrayIcon(icon, parent=app)
-    tray_icon.setToolTip("FloatingDictionary")
-    tray_menu = QMenu()
-    exit_action = QAction("Exit", triggered=on_exit)
-    tray_menu.addAction(exit_action)
-    tray_icon.setContextMenu(tray_menu)
-    tray_icon.show()
-
-    # 5. Connect signals and slots
-    emitter.show_tooltip.connect(lambda text: tooltip.show_at(QCursor.pos(), text))
-
-    # 6. Initialize and start worker and hotkey manager
-    worker = TranslationWorker(emitter, blink_highlight, cancel_highlight)
-    worker.start()
-
-    hotkey_manager = HotkeyManager(capture_callback=worker.add_job, exit_callback=on_exit)
-    hotkey_manager.start()
-
-    # 7. Start the application
-    print("โปรแกรมแปลภาษา (Longdo + Google) พร้อมทำงาน!")
-    print(" - กด [Ctrl + D] เพื่อจับภาพและแปลคำใต้เมาส์")
-    print(" - กด [Esc] เพื่อซ่อนกรอบและคำแปล")
-    print(" - กด [Ctrl + Q] เพื่อปิดโปรแกรม (หรือปิดหน้าต่าง Terminal)")
+    main_app = MainApplication(app)
+    main_app.run()
 
     try:
         sys.exit(app.exec_())
-    except KeyboardInterrupt:
-        on_exit()
+    except (KeyboardInterrupt, SystemExit):
+        main_app.on_exit()
+
+if __name__ == "__main__":
+    main()
