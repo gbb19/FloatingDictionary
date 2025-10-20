@@ -81,5 +81,5 @@
 ## การ Build
 
 ```bash
-pyinstaller --name "FloatingDictionary" --onefile --windowed --add-data "C:\Users\gbbtn\AppData\Local\Programs\Tesseract-OCR;Tesseract-OCR" main.py
+pyinstaller --name "FloatingDictionary" --noconsole --windowed --add-data "Tesseract-OCR;Tesseract-OCR" main.py
 ```
