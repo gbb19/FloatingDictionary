@@ -2,8 +2,7 @@ PyQt5
 pyautogui
 pytesseract
 requests
+aiohttp
 beautifulsoup4
 googletrans
 pynput
-paddlepaddle
-paddleocr

@@ -3,7 +3,7 @@ Handles fetching translation data from external services (Longdo, Google Transla
 """
 import asyncio
 import re
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
 from googletrans import Translator
 
@@ -38,19 +38,20 @@ def get_google_translation_sync(text, dest_lang, src_lang='auto'):
 
 # --- Longdo Dictionary Scraper (EN-TH only) ---
 
-def fetch_longdo_word(word: str) -> BeautifulSoup | None:
-    """Fetches the word definition page from Longdo and returns a BeautifulSoup object."""
+async def fetch_longdo_word_async(word: str) -> BeautifulSoup | None:
+    """Fetches the word definition page from Longdo asynchronously and returns a BeautifulSoup object."""
     url = f"https://dict.longdo.com/mobile.php?search={word}"
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
     }
     try:
-        response = requests.get(url, headers=headers, timeout=5)
-        response.encoding = 'utf-8'
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        return soup
-    except requests.exceptions.RequestException as e:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=5) as response:
+                response.raise_for_status()
+                text = await response.text(encoding='utf-8')
+                soup = BeautifulSoup(text, 'html.parser')
+                return soup
+    except aiohttp.ClientError as e:
         print(f"Error connecting to Longdo: {e}")
         return None
 

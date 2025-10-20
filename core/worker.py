@@ -5,9 +5,14 @@ import pyautogui
 from queue import Queue
 import threading
 
+import asyncio
+import pyautogui
+from queue import Queue
+import threading
+
 from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, SOURCE_LANG, TARGET_LANG
 from services.ocr import get_ocr_engine, OcrError
-from services.translation import fetch_longdo_word, parse_longdo_data, get_google_translation_sync
+from services.translation import async_translate, fetch_longdo_word_async, parse_longdo_data, get_google_translation_sync
 from ui.formatter import format_combined_data
 
 class TranslationWorker(threading.Thread):
@@ -180,23 +185,47 @@ class TranslationWorker(threading.Thread):
         if cache_key not in self.translation_cache:
             print(f"Searching online for: {search_word}")
 
-            # Always get Google translation first to detect the source language.
-            google_result = get_google_translation_sync(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+            # --- Concurrent API Calls ---
+            async def _fetch_concurrently():
+                # Always fetch Google Translate result first to get detected language
+                google_task = async_translate(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
+                google_result = await google_task
 
-            # Handle cases where translation might fail and return a string error
+                # If Google fails, we can't proceed.
+                if not hasattr(google_result, 'src'):
+                    return google_result, None
+
+                detected_lang = google_result.src
+                longdo_task = None
+
+                # If the detected language is English and target is Thai, create Longdo task
+                if TARGET_LANG == 'th' and detected_lang == 'en':
+                    print(f"Detected English word '{search_word}', fetching from Longdo...")
+                    longdo_task = fetch_longdo_word_async(search_word)
+                
+                # If there's a longdo task, run it concurrently with a dummy task
+                # (since google_task is already awaited)
+                if longdo_task:
+                    results = await asyncio.gather(asyncio.sleep(0, result=google_result), longdo_task)
+                    return results[0], results[1] # google_result, longdo_soup
+                else:
+                    return google_result, None
+
+            # Run the async orchestrator in a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            google_result, longdo_soup = loop.run_until_complete(_fetch_concurrently())
+            loop.close()
+            # --- End Concurrent API Calls ---
+
             if not hasattr(google_result, 'src'):
                 self.emitter.show_tooltip.emit(str(google_result), box)
                 return
 
-            detected_lang = google_result.src
             google_translation = google_result.text
-
-            # Now, check if we should also fetch from Longdo.
-            longdo_data = None
-            if TARGET_LANG == 'th' and detected_lang == 'en':
-                print(f"Detected English word '{search_word}', fetching from Longdo...")
-                soup = fetch_longdo_word(search_word)
-                longdo_data = parse_longdo_data(soup) if soup else None
+            detected_lang = google_result.src
+            
+            longdo_data = parse_longdo_data(longdo_soup) if longdo_soup else None
             
             formatted_translation = format_combined_data(
                 longdo_data, 
