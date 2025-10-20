@@ -6,3 +6,4 @@ aiohttp
 beautifulsoup4
 googletrans
 pynput
+python-dotenv

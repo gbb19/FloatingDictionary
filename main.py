@@ -1,6 +1,14 @@
 import sys
 from functools import partial
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction, QActionGroup, QStyle, QWidget
+from PyQt5.QtWidgets import (
+    QApplication,
+    QSystemTrayIcon,
+    QMenu,
+    QAction,
+    QActionGroup,
+    QStyle,
+    QWidget,
+)
 from PyQt5.QtCore import pyqtSignal, QObject, QPoint, QRect
 from PyQt5.QtGui import QCursor
 
@@ -10,13 +18,16 @@ from ui.tooltip import PersistentToolTip
 from core.worker import TranslationWorker
 from core.hotkey_manager import HotkeyManager
 from config import SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP
+from utils.app_logger import debug_print
+
 
 class SignalEmitter(QObject):
-    show_tooltip = pyqtSignal(str, 'PyQt_PyObject')
-    pre_ocr_ready = pyqtSignal(list, 'PyQt_PyObject')
+    show_tooltip = pyqtSignal(str, "PyQt_PyObject")
+    pre_ocr_ready = pyqtSignal(list, "PyQt_PyObject")
     blink_box = pyqtSignal(dict)
     enter_sentence_mode_signal = pyqtSignal()
-    
+
+
 class MainApplication:
     def __init__(self, app):
         self.app = app
@@ -26,7 +37,7 @@ class MainApplication:
         # --- Language State ---
         self.source_lang = SOURCE_LANG
         self.target_lang = TARGET_LANG
-        
+
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
         self.worker = TranslationWorker(self.emitter)
@@ -34,7 +45,7 @@ class MainApplication:
             capture_callback=self.on_capture_hotkey,
             sentence_callback=self.on_sentence_hotkey,
             exit_callback=self.on_exit,
-            hide_callback=self.cancel_highlight
+            hide_callback=self.cancel_highlight,
         )
         self.setup_tray_icon()
         self.connect_signals()
@@ -43,7 +54,7 @@ class MainApplication:
         icon = self.app.style().standardIcon(QStyle.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
         self.tray_icon.setToolTip("FloatingDictionary")
-        
+
         self.tray_menu = QMenu(self.dummy_parent_widget)
         self.tray_menu.setStyleSheet("""
             QMenu {
@@ -68,9 +79,9 @@ class MainApplication:
 
         auto_action = self.source_menu.addAction("Auto")
         auto_action.setCheckable(True)
-        auto_action.triggered.connect(partial(self.set_source_lang, 'auto'))
+        auto_action.triggered.connect(partial(self.set_source_lang, "auto"))
         self.source_action_group.addAction(auto_action)
-        if self.source_lang == 'auto':
+        if self.source_lang == "auto":
             auto_action.setChecked(True)
 
         for code, tesseract_code in LANG_CODE_MAP.items():
@@ -80,7 +91,7 @@ class MainApplication:
             self.source_action_group.addAction(action)
             if self.source_lang == code:
                 action.setChecked(True)
-        
+
         self.tray_menu.addMenu(self.source_menu)
 
         # --- Target Language Menu ---
@@ -105,11 +116,11 @@ class MainApplication:
 
     def set_source_lang(self, lang_code):
         self.source_lang = lang_code
-        print(f"Source language set to: {lang_code}")
+        debug_print(f"Source language set to: {lang_code}")
 
     def set_target_lang(self, lang_code):
         self.target_lang = lang_code
-        print(f"Target language set to: {lang_code}")
+        debug_print(f"Target language set to: {lang_code}")
 
     def connect_signals(self):
         self.emitter.show_tooltip.connect(self.on_show_tooltip)
@@ -129,13 +140,15 @@ class MainApplication:
             "Floating Dictionary",
             "Ready to work!\n- Press Ctrl+Alt+D to translate a word\n- Press Ctrl+Alt+S to translate a sentence",
             QSystemTrayIcon.Information,
-            2000
+            2000,
         )
-        print("Floating Dictionary (Longdo + Google) is ready!")
-        print(" - Press [Ctrl + Alt + D] to translate the word under the cursor")
-        print(" - Press [Ctrl + Alt + S] to enter sentence selection mode (drag to select)")
-        print(" - Press [Esc] to cancel or hide the window")
-        print(" - Press [Ctrl + Alt + Q] to exit the program")
+        debug_print("Floating Dictionary (Longdo + Google) is ready!")
+        debug_print(" - Press [Ctrl + Alt + D] to translate the word under the cursor")
+        debug_print(
+            " - Press [Ctrl + Alt + S] to enter sentence selection mode (drag to select)"
+        )
+        debug_print(" - Press [Esc] to cancel or hide the window")
+        debug_print(" - Press [Ctrl + Alt + Q] to exit the program")
 
     def on_capture_hotkey(self):
         self.worker.add_job(self.source_lang, self.target_lang)
@@ -149,11 +162,16 @@ class MainApplication:
     def on_show_tooltip(self, text, position_hint):
         pos = QCursor.pos()
         if isinstance(position_hint, dict):
-            rect = QRect(position_hint['left'], position_hint['top'], position_hint['width'], position_hint['height'])
+            rect = QRect(
+                position_hint["left"],
+                position_hint["top"],
+                position_hint["width"],
+                position_hint["height"],
+            )
             pos = rect.topRight()
         elif isinstance(position_hint, QRect):
             pos = position_hint.center()
-        
+
         self.tooltip.show_at(pos, text)
 
         is_final_result = "<i>" not in text and text
@@ -175,28 +193,33 @@ class MainApplication:
         self.worker.add_pre_ocr_job(region, self.source_lang, self.target_lang)
 
     def on_translate_all_requested(self, region):
-        self.worker.add_ocr_and_translate_job(region, region, self.source_lang, self.target_lang)
+        self.worker.add_ocr_and_translate_job(
+            region, region, self.source_lang, self.target_lang
+        )
 
     def on_words_selected(self, words):
         if not words:
             return
-        
-        min_x = min(w['left'] for w in words)
-        min_y = min(w['top'] for w in words)
-        max_x = max(w['left'] + w['width'] for w in words)
-        max_y = max(w['top'] + w['height'] for w in words)
+
+        min_x = min(w["left"] for w in words)
+        min_y = min(w["top"] for w in words)
+        max_x = max(w["left"] + w["width"] for w in words)
+        max_y = max(w["top"] + w["height"] for w in words)
         bounding_rect = QRect(min_x, min_y, max_x - min_x, max_y - min_y)
 
-        sentence = ' '.join([word['text'] for word in words])
+        sentence = " ".join([word["text"] for word in words])
         if sentence:
-            self.worker.add_sentence_job(sentence, bounding_rect, self.source_lang, self.target_lang)
+            self.worker.add_sentence_job(
+                sentence, bounding_rect, self.source_lang, self.target_lang
+            )
 
     def on_exit(self):
-        print("Exiting program...")
+        debug_print("Exiting program...")
         self.worker.stop()
         self.worker.join()
         self.tray_icon.hide()
         self.app.quit()
+
 
 def main():
     # Ensure Tesseract is available before starting the application.
@@ -214,6 +237,7 @@ def main():
         sys.exit(app.exec_())
     except (KeyboardInterrupt, SystemExit):
         main_app.on_exit()
+
 
 if __name__ == "__main__":
     main()
