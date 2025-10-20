@@ -59,6 +59,11 @@ class TranslationWorker(threading.Thread):
             'is_pre_ocr': True
         })
 
+    def add_ocr_and_translate_job(self, region):
+        """Performs OCR and then immediately translates the entire result."""
+        rect = region.getRect()
+        self.queue.put({'screenshot': pyautogui.screenshot(region=rect), 'is_ocr_and_translate': True})
+
     def stop(self):
         """Signals the worker thread to stop."""
         self.queue.put(None)
@@ -67,6 +72,11 @@ class TranslationWorker(threading.Thread):
         """Handles OCR, word finding, and initiates translation for a job."""
         screenshot = job.get('screenshot') # Use .get() to avoid KeyError
         
+        if job.get('is_ocr_and_translate', False):
+            # --- [เพิ่ม] จัดการ Job ประเภท "แปลทั้งหมด" ---
+            self._process_sentence(screenshot)
+            return
+
         if job.get('is_pre_ocr', False):
             self._process_pre_ocr(screenshot, job['region_top_left'])
             return

@@ -27,7 +27,7 @@ class MainApplication:
         self.dummy_parent_widget = QWidget()
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
-        self.worker = TranslationWorker(self.emitter)
+        self.worker = TranslationWorker(self.emitter)        
         self.hotkey_manager = HotkeyManager(
             capture_callback=self.worker.add_job,
             sentence_callback=self.emitter.enter_sentence_mode_signal.emit,
@@ -70,7 +70,9 @@ class MainApplication:
         self.emitter.blink_box.connect(self.blink_highlight)
         self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode)
         self.overlay.region_selected.connect(self.on_region_selected)
+        self.overlay.translate_all_requested.connect(self.on_translate_all_requested)
         self.overlay.words_selected.connect(self.on_words_selected)
+        self.overlay.dismiss_requested.connect(self.cancel_highlight)
 
     def run(self):
         self.worker.start()
@@ -89,17 +91,12 @@ class MainApplication:
         print(" - กด [Ctrl + Alt + Q] เพื่อปิดโปรแกรม")
 
     def blink_highlight(self, box_to_blink):
-        self.overlay.show()
-        self.overlay.set_box(box_to_blink)
-        threading.Timer(0.15, lambda: self.overlay.set_box(None)).start()
-        threading.Timer(0.30, lambda: self.overlay.set_box(box_to_blink)).start()
-        threading.Timer(0.45, lambda: self.overlay.hide()).start()
+        # --- [แก้ไข] เปลี่ยนมาใช้ dismiss_mode ของ Overlay ---
+        self.overlay.enter_dismiss_mode(box_to_blink)
 
     def cancel_highlight(self):
-        if self.overlay.is_selection_mode or self.overlay.is_region_selection_mode:
-            self.overlay.exit_selection_mode()
-        else:
-            self.overlay.hide()
+        # --- [แก้ไข] รวมการยกเลิกทั้งหมดไว้ในที่เดียว ---
+        self.overlay.exit_selection_mode()
         self.emitter.show_tooltip.emit("")
 
     def enter_sentence_mode(self):
@@ -110,6 +107,9 @@ class MainApplication:
 
     def on_region_selected(self, region):
         self.worker.add_pre_ocr_job(region)
+
+    def on_translate_all_requested(self, region):
+        self.worker.add_ocr_and_translate_job(region)
 
     def on_words_selected(self, words):
         sentence = ' '.join([word['text'] for word in words])
