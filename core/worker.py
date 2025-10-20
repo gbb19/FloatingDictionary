@@ -9,6 +9,7 @@ import asyncio
 import pyautogui
 from queue import Queue
 import threading
+import re
 
 from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, SOURCE_LANG, TARGET_LANG
 from services.ocr import get_ocr_engine, OcrError
@@ -175,7 +176,7 @@ class TranslationWorker(threading.Thread):
     def _translate_and_show(self, box):
         """Fetches translations, formats, and emits a signal to show them."""
         self.last_processed_box = box
-        search_word = box['text'].strip(".,;:?!'\"-").lower()
+        search_word = box['text'].strip(".,;:?!'\"-()[]{}").lower()
         
         if not search_word:
             return
@@ -187,29 +188,21 @@ class TranslationWorker(threading.Thread):
 
             # --- Concurrent API Calls ---
             async def _fetch_concurrently():
-                # Always fetch Google Translate result first to get detected language
-                google_task = async_translate(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)
-                google_result = await google_task
-
-                # If Google fails, we can't proceed.
-                if not hasattr(google_result, 'src'):
-                    return google_result, None
-
-                detected_lang = google_result.src
-                longdo_task = None
-
-                # If the detected language is English and target is Thai, create Longdo task
-                if TARGET_LANG == 'th' and detected_lang == 'en':
-                    print(f"Detected English word '{search_word}', fetching from Longdo...")
-                    longdo_task = fetch_longdo_word_async(search_word)
+                is_english_like = bool(re.match(r'^[a-z]+', search_word))
                 
-                # If there's a longdo task, run it concurrently with a dummy task
-                # (since google_task is already awaited)
-                if longdo_task:
-                    results = await asyncio.gather(asyncio.sleep(0, result=google_result), longdo_task)
-                    return results[0], results[1] # google_result, longdo_soup
-                else:
-                    return google_result, None
+                tasks = [async_translate(search_word, dest_lang=TARGET_LANG, src_lang=SOURCE_LANG)]
+                
+                should_fetch_longdo = TARGET_LANG == 'th' and (SOURCE_LANG == 'en' or (SOURCE_LANG == 'auto' and is_english_like))
+
+                if should_fetch_longdo:
+                    print(f"'{search_word}' looks like English, fetching from Longdo concurrently...")
+                    tasks.append(fetch_longdo_word_async(search_word))
+                
+                results = await asyncio.gather(*tasks)
+
+                google_result = results[0]
+                longdo_soup = results[1] if len(results) > 1 else None
+                return google_result, longdo_soup
 
             # Run the async orchestrator in a new event loop
             loop = asyncio.new_event_loop()
@@ -222,10 +215,14 @@ class TranslationWorker(threading.Thread):
                 self.emitter.show_tooltip.emit(str(google_result), box)
                 return
 
-            google_translation = google_result.text
             detected_lang = google_result.src
-            
-            longdo_data = parse_longdo_data(longdo_soup) if longdo_soup else None
+            google_translation = google_result.text
+            print(f"Google detected '{search_word}' as language: {detected_lang}")
+
+            longdo_data = None
+            if longdo_soup:
+                print("Processing Longdo data...")
+                longdo_data = parse_longdo_data(longdo_soup)
             
             formatted_translation = format_combined_data(
                 longdo_data, 

@@ -9,7 +9,7 @@ OCR_ENGINE = 'tesseract'
 
 # --- Language Settings ---
 # Use 2-letter ISO 639-1 codes, or 'auto' to enable auto-detection from the list below.
-SOURCE_LANG = 'auto'
+SOURCE_LANG = 'en'
 TARGET_LANG = 'th'
 
 # List of languages to use for auto-detection. These must match the available .traineddata files.
