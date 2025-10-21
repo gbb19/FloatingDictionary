@@ -22,10 +22,10 @@ class OcrError(Exception):
 class OcrEngine:
     """Abstract base class for OCR engines."""
 
-    def image_to_data(self, image: Image, lang_code: str) -> dict:
+    def image_to_data(self, image: Image, lang_code: str, config: str = "") -> dict:
         raise NotImplementedError
 
-    def image_to_string(self, image: Image, lang_code: str) -> str:
+    def image_to_string(self, image: Image, lang_code: str, config: str = "") -> str:
         raise NotImplementedError
 
 
@@ -35,7 +35,7 @@ class OcrEngine:
 class TesseractOcrEngine(OcrEngine):
     """OCR engine implementation using Tesseract."""
 
-    def image_to_data(self, image: Image, lang_code: str) -> dict:
+    def image_to_data(self, image: Image, lang_code: str, config: str = "") -> dict:
         if lang_code == "auto":
             tesseract_lang = "+".join(AUTO_DETECT_LANGUAGES)
         else:
@@ -43,7 +43,10 @@ class TesseractOcrEngine(OcrEngine):
 
         try:
             return pytesseract.image_to_data(
-                image, lang=tesseract_lang, output_type=pytesseract.Output.DICT
+                image,
+                lang=tesseract_lang,
+                output_type=pytesseract.Output.DICT,
+                config=config,
             )
         except pytesseract.pytesseract.TesseractError as e:
             debug_print(f"Tesseract Error: {e}")
@@ -51,14 +54,16 @@ class TesseractOcrEngine(OcrEngine):
                 f"Tesseract Error for lang '{tesseract_lang}'. Is the language data installed?"
             ) from e
 
-    def image_to_string(self, image: Image, lang_code: str) -> str:
+    def image_to_string(self, image: Image, lang_code: str, config: str = "") -> str:
         if lang_code == "auto":
             tesseract_lang = "+".join(AUTO_DETECT_LANGUAGES)
         else:
             tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
 
         try:
-            return pytesseract.image_to_string(image, lang=tesseract_lang)
+            return pytesseract.image_to_string(
+                image, lang=tesseract_lang, config=config
+            )
         except pytesseract.pytesseract.TesseractError as e:
             debug_print(f"Tesseract Error: {e}")
             raise OcrError(f"Tesseract Error for lang '{tesseract_lang}'.") from e

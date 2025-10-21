@@ -5,12 +5,10 @@ The main worker thread for handling OCR and translation tasks.
 import pyautogui
 from queue import Queue
 import threading
+import time
 
 import asyncio
 import re
-import pyautogui
-from queue import Queue
-import threading
 
 from config import CAPTURE_WIDTH, CAPTURE_HEIGHT
 from services.ocr import get_ocr_engine, OcrError
@@ -118,6 +116,7 @@ class TranslationWorker(threading.Thread):
         cursor_x, cursor_y = job["cursor_pos"]
         left, top = job["region_top_left"]
 
+        t_start = time.time()
         try:
             data = self.ocr_engine.image_to_data(
                 screenshot, lang_code=job["source_lang"]
@@ -125,6 +124,10 @@ class TranslationWorker(threading.Thread):
         except OcrError as e:
             self.emitter.show_tooltip.emit(f"<i>{e}</i>", None)
             return
+        t_ocr_done = time.time()
+        debug_print(
+            f"[PROFILING] OCR processing took: {t_ocr_done - t_start:.4f} seconds"
+        )
 
         text_boxes = []
         for i in range(len(data["text"])):
@@ -230,6 +233,7 @@ class TranslationWorker(threading.Thread):
 
         if cache_key not in self.translation_cache:
             debug_print(f"Searching online for: {search_word}")
+            t_translate_start = time.time()
 
             async def _fetch_concurrently():
                 is_english_like = bool(re.match(r"^[a-z]+", search_word))
@@ -256,6 +260,11 @@ class TranslationWorker(threading.Thread):
             google_result, longdo_soup = loop.run_until_complete(_fetch_concurrently())
             loop.close()
 
+            t_translate_done = time.time()
+            debug_print(
+                f"[PROFILING] Network translation took: {t_translate_done - t_translate_start:.4f} seconds"
+            )
+
             if not hasattr(google_result, "src"):
                 self.emitter.show_tooltip.emit(str(google_result), box)
                 return
@@ -275,6 +284,7 @@ class TranslationWorker(threading.Thread):
             self.translation_cache[cache_key] = formatted_translation
         else:
             debug_print(f"Fetching from cache: {search_word}")
+            debug_print(f"[PROFILING] Translation from cache took: 0.0000 seconds")
             formatted_translation = self.translation_cache[cache_key]
 
         if self.last_processed_box == box:
