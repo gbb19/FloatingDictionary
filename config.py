@@ -13,7 +13,7 @@ SOURCE_LANG = "auto"  # Default source language ('auto' for detection)
 TARGET_LANG = "th"  # Default target language
 
 # Languages for Tesseract to use in 'auto' mode. Add more for broader detection.
-AUTO_DETECT_LANGUAGES = ["eng", "tha", "jpn", "chi_sim"]
+AUTO_DETECT_LANGUAGES = ["eng", "tha", "jpn", "chi_sim", "kor"]
 
 # Mapping from general language codes to Tesseract-specific codes
 LANG_CODE_MAP = {
@@ -21,6 +21,7 @@ LANG_CODE_MAP = {
     "th": "tha",
     "jp": "jpn",
     "cn": "chi_sim",
+    "ko": "kor",
     # Add other languages here if needed
 }
 
