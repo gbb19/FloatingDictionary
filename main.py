@@ -215,6 +215,7 @@ class MainApplication:
 
     def on_exit(self):
         debug_print("Exiting program...")
+        self.hotkey_manager.stop()
         self.worker.stop()
         self.worker.join()
         self.tray_icon.hide()
