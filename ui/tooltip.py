@@ -5,8 +5,6 @@ from PyQt5.QtWidgets import QWidget, QScrollArea, QLabel, QVBoxLayout, QApplicat
 from PyQt5.QtCore import Qt, QPoint, QPropertyAnimation
 from PyQt5.QtGui import QPainter, QColor
 
-from utils.windows import force_set_focus
-
 class CustomScrollArea(QScrollArea):
     """
     A QScrollArea subclass that sets the focus policy to NoFocus to prevent
