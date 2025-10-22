@@ -1,84 +1,86 @@
-# Floating Dictionary (พจนานุกรมลอย)
+# Floating Dictionary
 
-โปรแกรมพจนานุกรมสำหรับ Windows ที่ช่วยให้คุณสามารถแปลคำศัพท์ภาษาอังกฤษเป็นภาษาไทยได้อย่างรวดเร็ว เพียงแค่ชี้เมาส์ไปที่คำศัพท์แล้วกดปุ่มลัด
+A dictionary application for Windows that allows you to quickly translate words on your screen. Just point your mouse at a word and press a hotkey.
 
-  <!-- คุณสามารถจับภาพหน้าจอโปรแกรมแล้วอัปโหลดเพื่อนำ URL มาใส่ที่นี่ -->
+  <!-- You can capture a screenshot of the program and upload it to get a URL to place here -->
 
-## ✨ คุณสมบัติ (Features)
+## ✨ Features
 
-- **แปลภาษาทันที**: ชี้เมาส์ไปที่คำศัพท์ภาษาอังกฤษบนหน้าจอ แล้วกด `Ctrl+ALT+D`
-- **ข้อมูลจากหลายแหล่ง**: ดึงคำแปลจาก Longdo Dictionary (NECTEC Lexitron, Nontri) และ Google Translate
-- **แปลทั้งประโยค**: กด `Ctrl+ALT+S` เพื่อเข้าโหมดเลือกพื้นที่และเลือกคำศัพท์หลายคำเพื่อนำมาประกอบเป็นประโยคแล้วแปล
-- **ตัวอย่างประโยค**: แสดงตัวอย่างประโยคจาก Longdo (ถ้ามี)
-- **ทำงานเบื้องหลัง**: โปรแกรมจะทำงานอยู่ใน System Tray และจะปรากฏขึ้นเมื่อถูกเรียกใช้เท่านั้น
-- **UI ที่ใช้งานง่าย**: แสดงกรอบกระพริบสีแดงรอบคำที่กำลังแปล และแสดงผลใน Tooltip ที่สวยงามและเลื่อนดูได้
+- **Instant Translation**: Point your mouse at a word on the screen and press `Ctrl+Alt+D`.
+- **Multiple Sources**: Fetches translations from Longdo Dictionary (NECTEC Lexitron, Nontri) and Google Translate.
+- **Sentence Translation**: Press `Ctrl+Alt+S` to enter area selection mode, allowing you to select multiple words to form a sentence for translation.
+- **Example Sentences**: Displays example sentences from Longdo (if available).
+- **Runs in the Background**: The application runs in the System Tray and only appears when invoked.
+- **User-Friendly UI**: Shows a flashing red border around the word being translated and displays the results in a beautiful, scrollable tooltip.
 
 ---
 
-## ⚙️ สิ่งที่ต้องมี (Prerequisites)
+## ⚙️ Prerequisites
 
-ก่อนจะรันโปรแกรมนี้ได้ คุณจำเป็นต้องติดตั้ง **Tesseract OCR** ก่อน
+Before you can run this program, you need to install **Tesseract OCR**.
 
-1.  ดาวน์โหลด Tesseract OCR สำหรับ Windows จาก **ที่นี่ (UB-Mannheim builds)**
+1.  Download Tesseract OCR for Windows from **here (UB-Mannheim builds)**.
 
-    - แนะนำให้ดาวน์โหลดไฟล์ `tesseract-ocr-w64-setup-v5.x.x.exe`
+    - It is recommended to download the `tesseract-ocr-w64-setup-v5.x.x.exe` file.
 
-2.  **ขั้นตอนที่สำคัญที่สุด:** หลังจากติดตั้งเสร็จ ให้ไปที่โฟลเดอร์ที่ติดตั้ง Tesseract (โดยปกติคือ `C:\Program Files\Tesseract-OCR`)
+2.  **Most Important Step:** After installation, go to the Tesseract installation folder (usually `C:\Program Files\Tesseract-OCR`).
 
-3.  **คัดลอก (Copy)** โฟลเดอร์ `Tesseract-OCR` ทั้งหมด มา **วาง (Paste)** ไว้ในโฟลเดอร์รากของโปรเจกต์นี้ โครงสร้างสุดท้ายของโปรเจกต์ควรจะมีลักษณะดังนี้:
+3.  **Copy** the entire `Tesseract-OCR` folder and **Paste** it into the root folder of this project. The final project structure should look like this:
 
     ```
-    ocr/
-    ├── Tesseract-OCR/   <-- โฟลเดอร์ที่คุณเพิ่งคัดลอกมา
+    FloatingDictionary/
+    ├── Tesseract-OCR/   <-- The folder you just copied
     │   ├── tessdata/
     │   ├── tesseract.exe
     │   └── ... (ไฟล์อื่นๆ)
     ├── main.py
-    ├── core/
-    └── ... (ไฟล์อื่นๆ ของโปรเจกต์)
+    ├── services/
+    └── ... (other project files)
     ```
 
-> ขั้นตอนนี้จำเป็นเพื่อให้โปรแกรมสามารถหา Tesseract เจอได้เสมอ โดยเฉพาะเมื่อถูกแพ็คเป็นไฟล์ `.exe` ในอนาคต
+> This step is necessary to ensure the program can always find Tesseract, especially when it is packaged into an `.exe` file in the future.
 
 ---
 
-## 🚀 การติดตั้ง (Installation)
+## 🚀 Installation
 
-1.  Clone repository นี้ หรือดาวน์โหลดโค้ดทั้งหมดมาไว้ในเครื่องของคุณ
+1.  Clone this repository or download all the code to your machine.
 
-2.  (แนะนำ) สร้างและเปิดใช้งาน Virtual Environment ของ Python:
+2.  (Recommended) Create and activate a Python Virtual Environment:
 
     ```bash
     python -m venv venv
     .\venv\Scripts\activate
     ```
 
-3.  ติดตั้งไลบรารีที่จำเป็นทั้งหมดผ่านไฟล์ `requirements.txt`:
+3.  Install all necessary libraries via the `requirements.txt` file:
     ```bash
     pip install -r requirements.txt
     ```
 
 ---
 
-## 🏃‍♂️ การใช้งาน (Usage)
+## 🏃‍♂️ Usage
 
-1.  รันโปรแกรมผ่านไฟล์ `main.py`:
+1.  Run the program via the `main.py` file:
 
     ```bash
     python main.py
     ```
 
-2.  โปรแกรมจะแสดงข้อความว่าพร้อมทำงาน และจะมีไอคอนปรากฏขึ้นที่ System Tray (มุมขวาล่างของจอ)
+2.  The program will display a message indicating it is ready, and an icon will appear in the System Tray (bottom right corner of the screen).
 
-3.  **การใช้งาน Hotkeys:**
-    - `Ctrl + Alt + D`: จับภาพและแปลคำศัพท์ที่อยู่ใต้เคอร์เซอร์เมาส์
-    - `Ctrl + Alt + S`: เข้าสู่โหมดเลือกพื้นที่เพื่อแปลประโยค
-    - `Esc`: ยกเลิกการเลือก หรือซ่อนหน้าต่างคำแปล
-    - `Ctrl + Alt + Q`: ปิดโปรแกรมทั้งหมด
+3.  **Using Hotkeys:**
+    - `Ctrl + Alt + D`: Capture and translate the word under the mouse cursor.
+    - `Ctrl + Alt + S`: Enter area selection mode to translate a sentence.
+    - `Esc`: Cancel selection or hide the translation window.
+    - `Ctrl + Alt + Q`: Exit the entire program.
 
 ---
 
-## การ Build
+## Building
+
+To build the application into a single executable:
 
 ```bash
 pyinstaller --name "FloatingDictionary" --noconsole --windowed --add-data "Tesseract-OCR;Tesseract-OCR" main.py
