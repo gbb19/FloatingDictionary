@@ -1,6 +1,7 @@
 """
 Manages system-wide hotkeys using pynput.
 """
+
 from pynput import keyboard as pynput_keyboard
 from utils.app_logger import debug_print
 
@@ -60,3 +61,7 @@ class HotkeyManager:
     def start(self):
         """Starts the hotkey listener."""
         self.listener.start()
+
+    def stop(self):
+        """Stops the hotkey listener."""
+        self.listener.stop()
