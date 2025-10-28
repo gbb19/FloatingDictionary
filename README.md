@@ -12,6 +12,7 @@ A dictionary application for Windows that allows you to quickly translate words 
 - **Example Sentences**: Displays example sentences from Longdo (if available).
 - **Runs in the Background**: The application runs in the System Tray and only appears when invoked.
 - **User-Friendly UI**: Shows a flashing red border around the word being translated and displays the results in a beautiful, scrollable tooltip.
+- **Language Switching**: Right-click the tray icon in the taskbar to switch between source and target languages.
 
 ---
 
