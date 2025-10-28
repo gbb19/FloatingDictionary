@@ -1,2 +1,57 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-venv
+# Python
+###################
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environments
+.env
+.venv*
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+
+# PyInstaller
+###################
+# Usually these files are created by PyInstaller.
+*.spec
+build/
+dist/
+
+
+# Project Specific Dependencies
+###################
+# The Tesseract OCR binaries and data files are large
+# and should be downloaded separately, not stored in the repository.
+Tesseract-OCR/
+
+
+# Unit test / coverage reports
+###################
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+
+# IDE / Editor settings
+###################
+.vscode/
+.idea/
+
+# install
+install
