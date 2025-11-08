@@ -15,7 +15,9 @@ def format_combined_data(
     output_lines = []
 
     # 1. Search Term (Header)
-    output_lines.append(f"<p style='font-size: 20pt; font-weight: bold; color: #ffffff; margin-bottom: 0px;'>{search_word}</p><hr style='margin: 2px 0 4px 0; border-color: #666;'>")
+    # Capitalize the first letter of the search word for better display.
+    display_word = search_word.capitalize()
+    output_lines.append(f"<p style='font-size: 20pt; font-weight: bold; color: #ffffff; margin-bottom: 0px;'>{display_word}</p><hr style='margin: 2px 0 4px 0; border-color: #666;'>")
     
     # 2. Google Translate Section
     output_lines.append(f"<p style='font-size: 16pt; margin: 5px 0 2px 0;'><u><b>Google ({target_lang.upper()}):</b></u></p>")
