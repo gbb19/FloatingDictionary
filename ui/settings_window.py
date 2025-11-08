@@ -343,6 +343,7 @@ class SettingsWindow(QDialog):
             'exit': self.hotkey_exit_edit.keySequence().toString(),
         }
         self.settings_saved.emit(new_settings)
+        self.accept() # Close the dialog and signal acceptance
 
     def reset_settings_to_defaults(self):
         """Resets the hotkey edit fields to their default values."""

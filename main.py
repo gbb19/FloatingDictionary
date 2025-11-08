@@ -187,8 +187,17 @@ class MainApplication:
         self.emitter.enter_sentence_mode_signal.emit()
 
     def show_settings_window(self):
-        self.settings_window.show()
-        self.settings_window.activateWindow()
+        """Stops hotkeys, shows the settings window, and restarts them when it closes."""
+        debug_print("Disabling hotkeys to open settings window.")
+        self.hotkey_manager.stop()
+
+        # The exec() call makes the window modal and blocks until it's closed.
+        self.settings_window.exec()
+
+        # After the window is closed (either by 'X' or 'Save'), restart the hotkey manager.
+        # The on_settings_saved signal already handles restarting, so this covers the case
+        # where the user closes the window without saving.
+        self.restart_hotkey_manager()
 
     def blink_highlight(self, box_to_blink):
         self.overlay.enter_dismiss_mode(box_to_blink)
@@ -255,16 +264,19 @@ class MainApplication:
         """Deletes specific entries from history and cache."""
         self.worker.delete_entries(cache_keys)
 
+    def restart_hotkey_manager(self):
+        """Safely stops the current hotkey manager and starts a new one with current settings."""
+        debug_print("Restarting hotkey manager...")
+        if self.hotkey_manager and self.hotkey_manager.listener.is_alive():
+            self.hotkey_manager.stop()
+        self.hotkey_manager = self._create_hotkey_manager()
+        self.hotkey_manager.start()
+
     def on_settings_saved(self, new_settings):
         """Applies new settings, especially for hotkeys."""
         self.settings = new_settings
         save_settings(SETTINGS_FILE_PATH, self.settings)
-
-        # Restart hotkey manager with new settings
-        debug_print("Applying new hotkey settings...")
-        self.hotkey_manager.stop()
-        self.hotkey_manager = self._create_hotkey_manager()
-        self.hotkey_manager.start()
+        self.restart_hotkey_manager() # Restart with the new settings
 
         QMessageBox.information(self.settings_window, "Settings Saved", 
                                 "Your new settings have been applied successfully.")
