@@ -321,7 +321,7 @@ class SettingsWindow(QDialog):
         title_label.setStyleSheet("font-size: 24pt; font-weight: bold;")
         main_layout.addWidget(title_label)
 
-        version_label = QLabel("Version 1.0.0")
+        version_label = QLabel("Version 2.0.0")
         version_label.setStyleSheet("font-size: 10pt; color: #aaa;")
         main_layout.addWidget(version_label)
 
