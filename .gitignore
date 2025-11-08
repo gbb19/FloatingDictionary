@@ -55,3 +55,6 @@ coverage.xml
 
 # install
 install
+
+
+translation_cache.json

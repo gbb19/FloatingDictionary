@@ -9,6 +9,8 @@ APP_ENV = os.getenv("APP_ENV", "prod")  # Can be 'dev' or 'prod'
 
 # --- Cache Configuration ---
 CACHE_FILE_PATH = "translation_cache.json"
+HISTORY_FILE_PATH = "translation_history.json"
+MAX_HISTORY_ENTRIES = 100 # Maximum number of entries to keep in history
 
 # --- OCR and Language Configuration ---
 OCR_ENGINE = "tesseract"
