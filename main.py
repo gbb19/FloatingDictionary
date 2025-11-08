@@ -150,6 +150,7 @@ class MainApplication:
         self.overlay.dismiss_requested.connect(self.cancel_highlight)
         self.tooltip.dismiss_requested.connect(self.cancel_highlight)
         self.settings_window.clear_history_requested.connect(self.on_clear_history_requested)
+        self.settings_window.delete_entries_requested.connect(self.on_delete_entries_requested)
         self.settings_window.display_translation_requested.connect(self.display_cached_translation)
 
     def run(self):
@@ -292,6 +293,10 @@ class MainApplication:
         """Clears history and cache when requested from the settings window."""
         self.worker.clear_history_and_cache()
     
+    def on_delete_entries_requested(self, cache_keys: list):
+        """Deletes specific entries from history and cache."""
+        self.worker.delete_entries(cache_keys)
+
     def display_cached_translation(self, cache_key: tuple):
         """Retrieves and displays a cached translation."""
         formatted_translation = self.worker.dictionary_data.get(cache_key, {}).get('html')

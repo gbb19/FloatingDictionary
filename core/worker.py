@@ -59,6 +59,15 @@ class TranslationWorker(threading.Thread):
         # Notify UI to update
         self.emitter.history_updated.emit(self.dictionary_data)
 
+    def delete_entries(self, cache_keys: list):
+        """Deletes specific entries from the dictionary data."""
+        debug_print(f"Deleting {len(cache_keys)} entries...")
+        for key in cache_keys:
+            if key in self.dictionary_data:
+                del self.dictionary_data[key]
+        save_data(DATA_FILE_PATH, self.dictionary_data)
+        self.emitter.history_updated.emit(self.dictionary_data)
+
     def add_job(self, source_lang, target_lang):
         x, y = pyautogui.position()
         left = max(0, x - CAPTURE_WIDTH // 2)
