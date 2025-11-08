@@ -10,15 +10,14 @@ import time
 import asyncio
 import re
 
-from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, CACHE_FILE_PATH, HISTORY_FILE_PATH, MAX_HISTORY_ENTRIES
+from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, DATA_FILE_PATH, MAX_HISTORY_ENTRIES
 from services.ocr import get_ocr_engine, OcrError
 from services.translation import (
     async_translate,
     fetch_longdo_word_async,
     parse_longdo_data,
 )
-from core.file_cache import load_cache, save_cache # For translation cache
-from core.history_manager import load_history, save_history, add_history_entry # For translation history
+from core.data_manager import load_data, save_data, update_entry
 from ui.formatter import format_combined_data
 from utils.app_logger import debug_print
 
@@ -29,8 +28,7 @@ class TranslationWorker(threading.Thread):
         self.queue = Queue()
         self.emitter = emitter
         self.last_processed_box = None
-        self.translation_cache = self._load_initial_cache()
-        self.history = self._load_initial_history()
+        self.dictionary_data = self._load_initial_data()
         self.ocr_engine = get_ocr_engine()
 
     def _run_async_task(self, task):
@@ -48,15 +46,18 @@ class TranslationWorker(threading.Thread):
                 break
             self._process_job(job)
 
-    def _load_initial_cache(self):
-        """Loads the cache from the file at startup."""
-        debug_print(f"Loading cache from '{CACHE_FILE_PATH}'...")
-        return load_cache(CACHE_FILE_PATH)
-    
-    def _load_initial_history(self):
-        """Loads the history from the file at startup."""
-        debug_print(f"Loading history from '{HISTORY_FILE_PATH}'...")
-        return load_history(HISTORY_FILE_PATH, MAX_HISTORY_ENTRIES)
+    def _load_initial_data(self):
+        """Loads the dictionary data from the file at startup."""
+        debug_print(f"Loading data from '{DATA_FILE_PATH}'...")
+        return load_data(DATA_FILE_PATH)
+
+    def clear_history_and_cache(self):
+        """Clears both in-memory and file-based history and cache."""
+        debug_print("Clearing all history and cache...")
+        self.dictionary_data.clear()
+        save_data(DATA_FILE_PATH, self.dictionary_data)
+        # Notify UI to update
+        self.emitter.history_updated.emit(self.dictionary_data)
 
     def add_job(self, source_lang, target_lang):
         x, y = pyautogui.position()
@@ -116,7 +117,7 @@ class TranslationWorker(threading.Thread):
 
     def stop(self):
         self.queue.put(None)
-        save_history(HISTORY_FILE_PATH, self.history) # Save history on exit
+        save_data(DATA_FILE_PATH, self.dictionary_data) # Save data on exit
 
     def _process_job(self, job):
         if job.get("is_ocr_and_translate", False):
@@ -253,7 +254,7 @@ class TranslationWorker(threading.Thread):
 
         cache_key = (search_word, source_lang, target_lang)
 
-        if cache_key not in self.translation_cache:
+        if cache_key not in self.dictionary_data:
             debug_print(f"Searching online for: {search_word}")
             t_translate_start = time.time()
 
@@ -300,16 +301,14 @@ class TranslationWorker(threading.Thread):
             formatted_translation = format_combined_data(
                 longdo_data, google_translation, search_word, detected_lang, target_lang
             )
-            self.translation_cache[cache_key] = formatted_translation
-            # Save the updated cache to the file
-            add_history_entry(self.history, cache_key, MAX_HISTORY_ENTRIES)
-            self.emitter.history_updated.emit(self.history) # Notify main thread about history update
-
-            save_cache(CACHE_FILE_PATH, self.translation_cache)
+            # Update the central data store
+            update_entry(self.dictionary_data, cache_key, formatted_translation, MAX_HISTORY_ENTRIES)
+            self.emitter.history_updated.emit(self.dictionary_data) # Notify main thread about update
+            save_data(DATA_FILE_PATH, self.dictionary_data)
         else:
             debug_print(f"Fetching from cache: {search_word}")
             debug_print(f"[PROFILING] Translation from cache took: 0.0000 seconds")
-            formatted_translation = self.translation_cache[cache_key]
+            formatted_translation = self.dictionary_data[cache_key]['html']
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")

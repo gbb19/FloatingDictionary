@@ -14,6 +14,7 @@ from PyQt6.QtGui import QCursor, QGuiApplication, QAction, QActionGroup
 from services.tesseract_setup import initialize_tesseract
 from ui.overlay import Overlay
 from ui.tooltip import PersistentToolTip
+from ui.settings_window import SettingsWindow
 from core.worker import TranslationWorker
 from core.hotkey_manager import HotkeyManager
 from config import SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP
@@ -25,7 +26,7 @@ class SignalEmitter(QObject):
     pre_ocr_ready = pyqtSignal(list, "PyQt_PyObject")
     blink_box = pyqtSignal(dict)
     enter_sentence_mode_signal = pyqtSignal()
-    history_updated = pyqtSignal(list)
+    history_updated = pyqtSignal(dict)
 
 
 class MainApplication:
@@ -42,6 +43,7 @@ class MainApplication:
         self.tooltip = PersistentToolTip()
         self.history_menu = None # Will be initialized in setup_tray_icon
         self.worker = TranslationWorker(self.emitter)
+        self.settings_window = SettingsWindow(self.worker, self.dummy_parent_widget)
         self.hotkey_manager = HotkeyManager(
             capture_callback=self.on_capture_hotkey,
             sentence_callback=self.on_sentence_hotkey,
@@ -118,6 +120,11 @@ class MainApplication:
         self.tray_menu.addMenu(self.history_menu)
         self.tray_menu.addSeparator()
 
+        self.settings_action = QAction("Settings...", self.tray_menu)
+        self.settings_action.triggered.connect(self.show_settings_window)
+        self.tray_menu.addAction(self.settings_action)
+        self.tray_menu.addSeparator()
+
         self.exit_action = QAction("Exit", self.tray_menu)
         self.exit_action.triggered.connect(self.on_exit)
         self.tray_menu.addAction(self.exit_action)
@@ -142,9 +149,11 @@ class MainApplication:
         self.overlay.words_selected.connect(self.on_words_selected)
         self.overlay.dismiss_requested.connect(self.cancel_highlight)
         self.tooltip.dismiss_requested.connect(self.cancel_highlight)
+        self.settings_window.clear_history_requested.connect(self.on_clear_history_requested)
+        self.settings_window.display_translation_requested.connect(self.display_cached_translation)
 
     def run(self):
-        self.update_history_menu(self.worker.history) # Populate history menu on startup
+        self.update_history_menu(self.worker.dictionary_data) # Populate history menu on startup
         self.worker.start()
         self.hotkey_manager.start()
         self.tray_icon.show()
@@ -167,6 +176,10 @@ class MainApplication:
 
     def on_sentence_hotkey(self):
         self.emitter.enter_sentence_mode_signal.emit()
+
+    def show_settings_window(self):
+        self.settings_window.show()
+        self.settings_window.activateWindow()
 
     def blink_highlight(self, box_to_blink):
         self.overlay.enter_dismiss_mode(box_to_blink)
@@ -198,7 +211,7 @@ class MainApplication:
     def enter_sentence_mode(self):
         self.overlay.enter_region_selection_mode()
 
-    def update_history_menu(self, history_data: list):
+    def update_history_menu(self, dictionary_data: dict):
         """
         Updates the 'Translation History' menu with recent translations.
         """
@@ -207,7 +220,7 @@ class MainApplication:
 
         self.history_menu.clear()
 
-        if not history_data:
+        if not dictionary_data:
             self.history_menu.addAction("No history yet").setEnabled(False)
             return
 
@@ -219,11 +232,12 @@ class MainApplication:
         older_menu = QMenu("Older", self.history_menu)
 
         # Sort history by timestamp in descending order (most recent first)
-        sorted_history = sorted(history_data, key=lambda x: x['timestamp'], reverse=True)
+        # Convert dict to list of tuples (cache_key, data) for sorting
+        sorted_history = sorted(dictionary_data.items(), key=lambda item: item[1]['timestamp'], reverse=True)
 
         for entry in sorted_history:
-            cache_key = entry['cache_key']
-            timestamp_str = entry['timestamp']
+            cache_key = entry[0]
+            timestamp_str = entry[1]['timestamp']
             translated_word = cache_key[0] # The search_word
             
             try:
@@ -273,10 +287,14 @@ class MainApplication:
             self.worker.add_sentence_job(
                 sentence, bounding_rect, self.source_lang, self.target_lang
             )
+
+    def on_clear_history_requested(self):
+        """Clears history and cache when requested from the settings window."""
+        self.worker.clear_history_and_cache()
     
     def display_cached_translation(self, cache_key: tuple):
         """Retrieves and displays a cached translation."""
-        formatted_translation = self.worker.translation_cache.get(cache_key)
+        formatted_translation = self.worker.dictionary_data.get(cache_key, {}).get('html')
         if formatted_translation:
             # Display at current cursor position, as there's no specific box for history recall
             current_pos = QCursor.pos()

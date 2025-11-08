@@ -58,3 +58,5 @@ install
 
 
 translation_cache.json
+translation_history.json
+dictionary_data.json
