@@ -107,25 +107,24 @@ class PersistentToolTip(QWidget):
         screen_geo = screen.availableGeometry()
 
         max_width = int(screen_geo.width() * 0.35)
-        max_height = int(screen_geo.height() * 0.5)
+        max_height = int(screen_geo.height() * 0.6) # Increased max height slightly
 
         # Step 2: Set text and calculate the ideal size for the content.
         self.label.setText(text)
-        self.label.setMinimumSize(0, 0)
-        self.label.setMaximumSize(16777215, 16777215)
+        # Reset fixed width/height to allow sizeHint to calculate correctly
+        self.label.setFixedWidth(0) 
+        self.label.setMinimumSize(0, 0) 
 
-        unconstrained_size = self.label.sizeHint()
+        # Determine the width of the content label
+        content_width = self.label.sizeHint().width()
+        label_width = min(content_width, max_width - 24 - 8) # max_width - h_padding - scrollbar
+        self.label.setFixedWidth(label_width)
 
-        if unconstrained_size.width() > max_width:
-            # If text is wider than max_width, constrain width and recalculate height.
-            self.label.setFixedWidth(max_width - 24 - 8) # max_width - (h_padding*2) - scrollbar_width
-            ideal_height = self.label.sizeHint().height()
-            final_width = max_width
-            final_height = min(ideal_height + 24, max_height) # + v_padding*2
-        else:
-            # If text is narrow, use its ideal size.
-            final_width = unconstrained_size.width() + 24
-            final_height = unconstrained_size.height() + 24
+        # Determine the final size of the tooltip widget
+        ideal_height = self.label.sizeHint().height()
+        final_height = min(ideal_height + 24, max_height) # Add vertical padding and cap at max_height
+        
+        final_width = label_width + 24 + (8 if ideal_height > final_height else 0) # Add padding and scrollbar width if needed
 
         self.setFixedSize(final_width, final_height)
 
