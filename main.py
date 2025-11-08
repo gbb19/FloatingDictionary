@@ -1,6 +1,5 @@
 import sys
 from functools import partial
-from datetime import datetime, timedelta
 from PyQt6.QtWidgets import (
     QApplication,
     QSystemTrayIcon,
@@ -41,9 +40,8 @@ class MainApplication:
 
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
-        self.history_menu = None # Will be initialized in setup_tray_icon
         self.worker = TranslationWorker(self.emitter)
-        self.settings_window = SettingsWindow(self.worker, self.dummy_parent_widget)
+        self.settings_window = SettingsWindow(self.worker, parent=None)
         self.hotkey_manager = HotkeyManager(
             capture_callback=self.on_capture_hotkey,
             sentence_callback=self.on_sentence_hotkey,
@@ -56,6 +54,7 @@ class MainApplication:
     def setup_tray_icon(self):
         icon = self.app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
+        self.settings_window.setWindowIcon(icon) # Set the same icon for the settings window
         self.tray_icon.setToolTip("FloatingDictionary")
 
         self.tray_menu = QMenu(self.dummy_parent_widget)
@@ -116,10 +115,6 @@ class MainApplication:
         self.tray_menu.addMenu(self.target_menu)
         self.tray_menu.addSeparator()
 
-        self.history_menu = QMenu("Translation History", self.tray_menu)
-        self.tray_menu.addMenu(self.history_menu)
-        self.tray_menu.addSeparator()
-
         self.settings_action = QAction("Settings...", self.tray_menu)
         self.settings_action.triggered.connect(self.show_settings_window)
         self.tray_menu.addAction(self.settings_action)
@@ -143,7 +138,6 @@ class MainApplication:
         self.emitter.pre_ocr_ready.connect(self.on_pre_ocr_ready)
         self.emitter.blink_box.connect(self.blink_highlight)
         self.emitter.enter_sentence_mode_signal.connect(self.enter_sentence_mode)
-        self.emitter.history_updated.connect(self.update_history_menu)
         self.overlay.region_selected.connect(self.on_region_selected)
         self.overlay.translate_all_requested.connect(self.on_translate_all_requested)
         self.overlay.words_selected.connect(self.on_words_selected)
@@ -154,7 +148,6 @@ class MainApplication:
         self.settings_window.display_translation_requested.connect(self.display_cached_translation)
 
     def run(self):
-        self.update_history_menu(self.worker.dictionary_data) # Populate history menu on startup
         self.worker.start()
         self.hotkey_manager.start()
         self.tray_icon.show()
@@ -208,59 +201,9 @@ class MainApplication:
     def cancel_highlight(self):
         self.overlay.exit_selection_mode()
         self.tooltip.start_hide_animation()
-
+    
     def enter_sentence_mode(self):
         self.overlay.enter_region_selection_mode()
-
-    def update_history_menu(self, dictionary_data: dict):
-        """
-        Updates the 'Translation History' menu with recent translations.
-        """
-        if not self.history_menu:
-            return
-
-        self.history_menu.clear()
-
-        if not dictionary_data:
-            self.history_menu.addAction("No history yet").setEnabled(False)
-            return
-
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
-
-        today_menu = QMenu("Today", self.history_menu)
-        yesterday_menu = QMenu("Yesterday", self.history_menu)
-        older_menu = QMenu("Older", self.history_menu)
-
-        # Sort history by timestamp in descending order (most recent first)
-        # Convert dict to list of tuples (cache_key, data) for sorting
-        sorted_history = sorted(dictionary_data.items(), key=lambda item: item[1]['timestamp'], reverse=True)
-
-        for entry in sorted_history:
-            cache_key = entry[0]
-            timestamp_str = entry[1]['timestamp']
-            translated_word = cache_key[0] # The search_word
-            
-            try:
-                entry_date = datetime.fromisoformat(timestamp_str).date()
-            except ValueError:
-                entry_date = today # Fallback for malformed timestamp
-
-            action = QAction(translated_word.capitalize(), self.history_menu)
-            action.triggered.connect(partial(self.display_cached_translation, cache_key))
-
-            if entry_date == today:
-                today_menu.addAction(action)
-            elif entry_date == yesterday:
-                yesterday_menu.addAction(action)
-            else:
-                older_menu.addAction(action)
-        
-        if today_menu.actions(): self.history_menu.addMenu(today_menu)
-        if yesterday_menu.actions(): self.history_menu.addMenu(yesterday_menu)
-        if older_menu.actions(): self.history_menu.addMenu(older_menu)
-        if not (today_menu.actions() or yesterday_menu.actions() or older_menu.actions()):
-            self.history_menu.addAction("No history yet").setEnabled(False)
 
     def on_pre_ocr_ready(self, boxes, region):
         self.overlay.enter_word_selection_mode(boxes, region)

@@ -2,6 +2,7 @@
 The settings window for the Floating Dictionary application.
 Provides UI for managing history, hotkeys, and other configurations.
 """
+import win32gui
 from datetime import datetime, date
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QTabWidget, QWidget, QTableWidget, QListWidget,
@@ -17,9 +18,13 @@ class SettingsWindow(QDialog):
     display_translation_requested = pyqtSignal(tuple)
 
     def __init__(self, worker, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self.setWindowTitle("Floating Dictionary - Settings")
         self.setMinimumSize(700, 500)
+        # Add the Window flag to ensure it gets a taskbar entry
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.Window)
+
+        self.last_active_window = None
         self.worker = worker
 
         # --- Main Layout ---
@@ -64,11 +69,16 @@ class SettingsWindow(QDialog):
             QListWidget {
                 font-size: 11pt;
                 background-color: #2c2c2c;
-                border: none;
+                border-right: 1px solid #444;
+                outline: none; /* Remove focus rectangle from the list widget itself */
                 padding-top: 5px;
             }
             QListWidget::item { padding: 8px; }
-            QListWidget::item:selected { background-color: #0078d7; }
+            QListWidget::item:selected { 
+                background-color: #0078d7;
+                border: none; /* Explicitly remove border on selection */
+                outline: none; /* Remove the default focus rectangle */
+            }
         """)
         self.language_list.currentItemChanged.connect(self.update_history_view)
 
@@ -242,6 +252,18 @@ class SettingsWindow(QDialog):
         super().showEvent(event)
         if self.tab_widget.currentWidget() == self.history_tab:
             self.populate_history_table()
+        # Store the handle of the currently active window before this one shows
+        self.last_active_window = win32gui.GetForegroundWindow()
+
+    def closeEvent(self, event):
+        """Override closeEvent to restore focus to the last active window."""
+        super().closeEvent(event)
+        if self.last_active_window:
+            try:
+                win32gui.SetForegroundWindow(self.last_active_window)
+            except Exception as e:
+                # This might fail if the window was closed, which is fine.
+                print(f"Could not restore focus to window: {e}")
 
     def _create_settings_tab(self):
         widget = QWidget()
