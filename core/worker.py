@@ -301,8 +301,14 @@ class TranslationWorker(threading.Thread):
             formatted_translation = format_combined_data(
                 longdo_data, google_translation, search_word, detected_lang, target_lang
             )
+            
+            # If the original source was 'auto', create a new, more specific cache key
+            # with the language that Google actually detected.
+            final_cache_key = (search_word, detected_lang, target_lang) if source_lang == "auto" else cache_key
+
             # Update the central data store
-            update_entry(self.dictionary_data, cache_key, formatted_translation, MAX_HISTORY_ENTRIES)
+            update_entry(self.dictionary_data, final_cache_key, formatted_translation, MAX_HISTORY_ENTRIES)
+            
             self.emitter.history_updated.emit(self.dictionary_data) # Notify main thread about update
             save_data(DATA_FILE_PATH, self.dictionary_data)
         else:
