@@ -3,9 +3,9 @@ The overlay widget for highlighting text boxes, selecting regions, and selecting
 This widget is a transparent, full-screen window that can be in one of several modes
 to handle user interaction without interfering with other applications.
 """
-from PyQt5.QtWidgets import QWidget, QApplication
-from PyQt5.QtCore import Qt, QRect, pyqtSignal
-from PyQt5.QtGui import QPainter, QPen, QColor, QCursor, QFont
+from PyQt6.QtWidgets import QWidget, QApplication
+from PyQt6.QtCore import Qt, QRect, pyqtSignal
+from PyQt6.QtGui import QPainter, QPen, QColor, QCursor, QFont, QGuiApplication
 
 class Overlay(QWidget):
     """
@@ -27,10 +27,10 @@ class Overlay(QWidget):
     def __init__(self):
         super().__init__()
         # Set window flags to be a frameless, always-on-top tool window.
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool)
         # Make the window background transparent and initially ignore mouse events.
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         # Unify geometry across all available screens for multi-monitor support.
         screens = QApplication.screens()
@@ -79,22 +79,22 @@ class Overlay(QWidget):
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Use a near-transparent background to capture mouse events in active modes.
         overlay_background_color = QColor(0, 0, 0, 1)
 
         if self.is_region_selection_mode or self.is_dismiss_mode:
             painter.fillRect(self.rect(), overlay_background_color)
-            painter.setPen(QPen(QColor("#33AFFF"), 1, Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#33AFFF"), 1, Qt.PenStyle.SolidLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.selection_rect)
 
         elif self.is_awaiting_action:
             # Draw the two choice buttons ("Translate All", "Select Words")
             painter.fillRect(self.rect(), overlay_background_color)
-            painter.setPen(QPen(QColor("#33AFFF"), 1, Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor("#33AFFF"), 1, Qt.PenStyle.SolidLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.selection_rect)
 
             font = QFont()
@@ -107,7 +107,7 @@ class Overlay(QWidget):
             painter.setPen(QPen(QColor("#888")))
             painter.drawRoundedRect(self.button_translate_all_rect, 5, 5)
             painter.setPen(QPen(QColor("#f0f0f0")))
-            painter.drawText(self.button_translate_all_rect, Qt.AlignCenter, "Translate All")
+            painter.drawText(self.button_translate_all_rect, Qt.AlignmentFlag.AlignCenter, "Translate All")
 
             # Draw "Select Words" button
             bg_color_select = QColor("#555") if self.hovered_button == 'select' else QColor("#333")
@@ -115,19 +115,19 @@ class Overlay(QWidget):
             painter.setPen(QPen(QColor("#888")))
             painter.drawRoundedRect(self.button_select_words_rect, 5, 5)
             painter.setPen(QPen(QColor("#f0f0f0")))
-            painter.drawText(self.button_select_words_rect, Qt.AlignCenter, "Select Words")
+            painter.drawText(self.button_select_words_rect, Qt.AlignmentFlag.AlignCenter, "Select Words")
 
         elif self.is_selection_mode:
             painter.fillRect(self.rect(), overlay_background_color)
             
             # Draw a dashed border around the original selection area for context.
-            pen = QPen(QColor("#33AFFF"), 1, Qt.DashLine) # Blue, dashed line
+            pen = QPen(QColor("#33AFFF"), 1, Qt.PenStyle.DashLine) # Blue, dashed line
             painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRect(self.selection_rect)
 
             # Highlight already selected boxes in green.
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(60, 179, 113, 120)) # SeaGreen
             for box in self.selected_word_boxes:
                 painter.drawRect(QRect(box['left'], box['top'], box['width'], box['height']))
@@ -140,7 +140,7 @@ class Overlay(QWidget):
 
         if self.box_to_draw:
             # In dismiss mode, draw a solid highlight over the translated word/phrase.
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(60, 179, 113, 120)) # SeaGreen, semi-transparent
             painter.drawRect(self.box_to_draw)
 
@@ -149,8 +149,8 @@ class Overlay(QWidget):
         self.exit_selection_mode() # Reset all states first
         self.is_region_selection_mode = True
         self.set_box(None)
-        self.setCursor(QCursor(Qt.CrossCursor))
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.show()
         self.activateWindow()
 
@@ -159,7 +159,7 @@ class Overlay(QWidget):
         self.exit_selection_mode() # Reset all states first
         self.is_dismiss_mode = True
         self.set_box(box_to_draw)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.show()
         self.activateWindow()
 
@@ -170,8 +170,8 @@ class Overlay(QWidget):
         self.selection_rect = selection_rect
         self.is_selection_mode = True
         self.set_box(None)
-        self.setCursor(QCursor(Qt.IBeamCursor))
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.show()
         self.activateWindow()
         self.setMouseTracking(True) # Required for hover effects
@@ -192,14 +192,14 @@ class Overlay(QWidget):
         self.is_mouse_pressed = False
         self.selection_anchor_box = None
         
-        self.setCursor(QCursor(Qt.ArrowCursor))
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setMouseTracking(False)
         self.hide()
         self.update()
 
     def mousePressEvent(self, event):
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
 
         if self.is_dismiss_mode:
@@ -226,9 +226,9 @@ class Overlay(QWidget):
             if not clicked_box:
                 return
 
-            modifiers = QApplication.keyboardModifiers()
+            modifiers = QGuiApplication.keyboardModifiers()
 
-            if modifiers == Qt.ShiftModifier and self.selection_anchor_box:
+            if modifiers == Qt.KeyboardModifier.ShiftModifier and self.selection_anchor_box:
                 # Shift+Click: Select a range of words.
                 try:
                     start_index = self.all_word_boxes.index(self.selection_anchor_box)
@@ -242,7 +242,7 @@ class Overlay(QWidget):
                     self.selected_word_boxes = [clicked_box]
                     self.selection_anchor_box = clicked_box
 
-            elif modifiers == Qt.ControlModifier:
+            elif modifiers == Qt.KeyboardModifier.ControlModifier:
                 # Ctrl+Click: Add or remove a single word from the selection.
                 if clicked_box in self.selected_word_boxes:
                     self.selected_word_boxes.remove(clicked_box)
@@ -298,7 +298,7 @@ class Overlay(QWidget):
     def mouseReleaseEvent(self, event):
         self.is_mouse_pressed = False
 
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
 
         if self.is_region_selection_mode:

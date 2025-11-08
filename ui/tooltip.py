@@ -1,9 +1,9 @@
 """
 The custom PersistentToolTip widget with scrolling, animations, and focus management.
 """
-from PyQt5.QtWidgets import QWidget, QScrollArea, QLabel, QVBoxLayout, QApplication
-from PyQt5.QtCore import Qt, QPoint, QPropertyAnimation
-from PyQt5.QtGui import QPainter, QColor
+from PyQt6.QtWidgets import QWidget, QScrollArea, QLabel, QVBoxLayout, QApplication
+from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation
+from PyQt6.QtGui import QPainter, QColor
 
 class CustomScrollArea(QScrollArea):
     """
@@ -12,7 +12,7 @@ class CustomScrollArea(QScrollArea):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFocusPolicy(Qt.NoFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def viewportEvent(self, event):
         return super().viewportEvent(event)
@@ -25,13 +25,13 @@ class PersistentToolTip(QWidget):
     def __init__(self):
         super().__init__()
         # Set window flags to be a frameless, always-on-top popup.
-        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Popup)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self.scroll_area = CustomScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         self.scroll_area.setStyleSheet("""
             QScrollArea { background-color: transparent; border: none; }
@@ -42,8 +42,8 @@ class PersistentToolTip(QWidget):
         self.label = QLabel(self)
         self.label.setStyleSheet("background-color: transparent; color: #f7f7f7; padding-right: 4px;")
         self.label.setWordWrap(True)
-        self.label.setTextFormat(Qt.RichText)
-        self.label.setAlignment(Qt.AlignTop)
+        self.label.setTextFormat(Qt.TextFormat.RichText)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.scroll_area.setWidget(self.label)
 
@@ -69,9 +69,9 @@ class PersistentToolTip(QWidget):
     def paintEvent(self, event):
         """Custom paint event to draw the rounded-corner background."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setBrush(QColor("#222222"))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(self.rect(), 10, 10)
 
     def on_hide_finished(self):
@@ -93,7 +93,11 @@ class PersistentToolTip(QWidget):
             return
         
         # Step 1: Determine max size based on the available screen geometry.
-        screen_geo = QApplication.desktop().availableGeometry(position)
+        screen = QApplication.screenAt(position)
+        if not screen:
+            screen = QApplication.primaryScreen()
+        screen_geo = screen.availableGeometry()
+
         max_width = int(screen_geo.width() * 0.35)
         max_height = int(screen_geo.height() * 0.5)
 

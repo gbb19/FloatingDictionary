@@ -1,16 +1,14 @@
 import sys
 from functools import partial
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QApplication,
     QSystemTrayIcon,
     QMenu,
-    QAction,
-    QActionGroup,
     QStyle,
     QWidget,
 )
-from PyQt5.QtCore import pyqtSignal, QObject, QPoint, QRect
-from PyQt5.QtGui import QCursor
+from PyQt6.QtCore import pyqtSignal, QObject, QPoint, QRect
+from PyQt6.QtGui import QCursor, QGuiApplication, QAction, QActionGroup
 
 from services.tesseract_setup import initialize_tesseract
 from ui.overlay import Overlay
@@ -51,7 +49,7 @@ class MainApplication:
         self.connect_signals()
 
     def setup_tray_icon(self):
-        icon = self.app.style().standardIcon(QStyle.SP_ComputerIcon)
+        icon = self.app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
         self.tray_icon.setToolTip("FloatingDictionary")
 
@@ -77,7 +75,8 @@ class MainApplication:
         self.source_action_group = QActionGroup(self.source_menu)
         self.source_action_group.setExclusive(True)
 
-        auto_action = self.source_menu.addAction("Auto")
+        auto_action = QAction("Auto", self.source_menu)
+        self.source_menu.addAction(auto_action)
         auto_action.setCheckable(True)
         auto_action.triggered.connect(partial(self.set_source_lang, "auto"))
         self.source_action_group.addAction(auto_action)
@@ -85,7 +84,8 @@ class MainApplication:
             auto_action.setChecked(True)
 
         for code, tesseract_code in LANG_CODE_MAP.items():
-            action = self.source_menu.addAction(f"{code} ({tesseract_code})")
+            action = QAction(f"{code} ({tesseract_code})", self.source_menu)
+            self.source_menu.addAction(action)
             action.setCheckable(True)
             action.triggered.connect(partial(self.set_source_lang, code))
             self.source_action_group.addAction(action)
@@ -100,7 +100,8 @@ class MainApplication:
         self.target_action_group.setExclusive(True)
 
         for code, tesseract_code in LANG_CODE_MAP.items():
-            action = self.target_menu.addAction(f"{code} ({tesseract_code})")
+            action = QAction(f"{code} ({tesseract_code})", self.target_menu)
+            self.target_menu.addAction(action)
             action.setCheckable(True)
             action.triggered.connect(partial(self.set_target_lang, code))
             self.target_action_group.addAction(action)
@@ -110,7 +111,8 @@ class MainApplication:
         self.tray_menu.addMenu(self.target_menu)
         self.tray_menu.addSeparator()
 
-        self.exit_action = QAction("Exit", triggered=self.on_exit)
+        self.exit_action = QAction("Exit", self.tray_menu)
+        self.exit_action.triggered.connect(self.on_exit)
         self.tray_menu.addAction(self.exit_action)
         self.tray_icon.setContextMenu(self.tray_menu)
 
@@ -139,7 +141,7 @@ class MainApplication:
         self.tray_icon.showMessage(
             "Floating Dictionary",
             "Ready to work!\n- Press Ctrl+Alt+D to translate a word\n- Press Ctrl+Alt+S to translate a sentence",
-            QSystemTrayIcon.Information,
+            QSystemTrayIcon.MessageIcon.Information,
             2000,
         )
         debug_print("Floating Dictionary (Longdo + Google) is ready!")
@@ -235,7 +237,7 @@ def main():
     main_app.run()
 
     try:
-        sys.exit(app.exec_())
+        sys.exit(app.exec())
     except (KeyboardInterrupt, SystemExit):
         main_app.on_exit()
 
