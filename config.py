@@ -11,6 +11,12 @@ APP_ENV = os.getenv("APP_ENV", "prod")  # Can be 'dev' or 'prod'
 DATA_FILE_PATH = "dictionary_data.json"
 MAX_HISTORY_ENTRIES = 100 # Maximum number of entries to keep in history
 
+# --- Hotkey Configuration ---
+SETTINGS_FILE_PATH = "settings.json"
+DEFAULT_HOTKEY_WORD = "Ctrl+Alt+D"
+DEFAULT_HOTKEY_SENTENCE = "Ctrl+Alt+S"
+DEFAULT_HOTKEY_EXIT = "Ctrl+Alt+Q"
+
 # --- OCR and Language Configuration ---
 OCR_ENGINE = "tesseract"
 SOURCE_LANG = "auto"  # Default source language ('auto' for detection)

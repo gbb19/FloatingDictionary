@@ -5,19 +5,21 @@ Provides UI for managing history, hotkeys, and other configurations.
 import win32gui
 from datetime import datetime, date
 from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QTabWidget, QWidget, QTableWidget, QListWidget,
+    QDialog, QVBoxLayout, QLabel, QTabWidget, QWidget, QTableWidget, QListWidget, QFormLayout,
     QTableWidgetItem, QLineEdit, QPushButton, QHBoxLayout, QHeaderView,
-    QAbstractItemView, QMessageBox, QApplication
+    QAbstractItemView, QMessageBox, QApplication, QKeySequenceEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QKeySequence
 
 class SettingsWindow(QDialog):
     # Signals to communicate back to the main application
     clear_history_requested = pyqtSignal()
     delete_entries_requested = pyqtSignal(list)
     display_translation_requested = pyqtSignal(tuple)
+    settings_saved = pyqtSignal(dict)
 
-    def __init__(self, worker, parent=None):
+    def __init__(self, worker, current_settings, default_settings, parent=None):
         super().__init__()
         self.setWindowTitle("Floating Dictionary - Settings")
         self.setMinimumSize(700, 500)
@@ -26,6 +28,8 @@ class SettingsWindow(QDialog):
 
         self.last_active_window = None
         self.worker = worker
+        self.current_settings = current_settings
+        self.default_settings = default_settings
 
         # --- Main Layout ---
         main_layout = QVBoxLayout(self)
@@ -267,14 +271,81 @@ class SettingsWindow(QDialog):
 
     def _create_settings_tab(self):
         widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.addWidget(QLabel("Hotkey and language settings will be implemented here."))
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        main_layout = QVBoxLayout(widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+
+        # --- Hotkey Settings ---
+        hotkey_label = QLabel("Hotkeys")
+        hotkey_label.setStyleSheet("font-size: 14pt; font-weight: bold;")
+        main_layout.addWidget(hotkey_label)
+
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        self.hotkey_word_edit = QKeySequenceEdit(QKeySequence(self.current_settings['word']))
+        self.hotkey_sentence_edit = QKeySequenceEdit(QKeySequence(self.current_settings['sentence']))
+        self.hotkey_exit_edit = QKeySequenceEdit(QKeySequence(self.current_settings['exit']))
+
+        form_layout.addRow("Translate Word:", self.hotkey_word_edit)
+        form_layout.addRow("Translate Sentence:", self.hotkey_sentence_edit)
+        form_layout.addRow("Exit Program:", self.hotkey_exit_edit)
+        
+        main_layout.addLayout(form_layout)
+        main_layout.addStretch()
+
+        # --- Action Buttons ---
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        self.reset_button = QPushButton("Reset to Defaults")
+        self.reset_button.clicked.connect(self.reset_settings_to_defaults)
+        button_layout.addWidget(self.reset_button)
+
+        self.save_button = QPushButton("Save Settings")
+        self.save_button.setStyleSheet("font-weight: bold;")
+        self.save_button.clicked.connect(self.save_settings)
+        button_layout.addWidget(self.save_button)
+
+        main_layout.addLayout(button_layout)
         return widget
 
     def _create_about_tab(self):
         widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.addWidget(QLabel("Application information will be shown here."))
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        main_layout = QVBoxLayout(widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        title_label = QLabel("Floating Dictionary")
+        title_label.setStyleSheet("font-size: 24pt; font-weight: bold;")
+        main_layout.addWidget(title_label)
+
+        version_label = QLabel("Version 1.0.0")
+        version_label.setStyleSheet("font-size: 10pt; color: #aaa;")
+        main_layout.addWidget(version_label)
+
+        desc_label = QLabel("A simple, on-screen dictionary and translation tool.")
+        desc_label.setWordWrap(True)
+        main_layout.addWidget(desc_label)
+
+        github_label = QLabel("<a href='https://github.com/gbb19/FloatingDictionary' style='color: #0078d7;'>View on GitHub</a>")
+        github_label.setOpenExternalLinks(True)
+        main_layout.addWidget(github_label)
+
         return widget
+
+    def save_settings(self):
+        """Emits a signal with the new settings to be saved."""
+        new_settings = {
+            'word': self.hotkey_word_edit.keySequence().toString(),
+            'sentence': self.hotkey_sentence_edit.keySequence().toString(),
+            'exit': self.hotkey_exit_edit.keySequence().toString(),
+        }
+        self.settings_saved.emit(new_settings)
+
+    def reset_settings_to_defaults(self):
+        """Resets the hotkey edit fields to their default values."""
+        self.hotkey_word_edit.setKeySequence(QKeySequence(self.default_settings['word']))
+        self.hotkey_sentence_edit.setKeySequence(QKeySequence(self.default_settings['sentence']))
+        self.hotkey_exit_edit.setKeySequence(QKeySequence(self.default_settings['exit']))

@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QSystemTrayIcon,
     QMenu,
+    QMessageBox,
     QStyle,
     QWidget,
 )
@@ -16,7 +17,11 @@ from ui.tooltip import PersistentToolTip
 from ui.settings_window import SettingsWindow
 from core.worker import TranslationWorker
 from core.hotkey_manager import HotkeyManager
-from config import SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP
+from core.settings_manager import load_settings, save_settings
+from config import (
+    SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP, 
+    SETTINGS_FILE_PATH, DEFAULT_HOTKEY_WORD, DEFAULT_HOTKEY_SENTENCE, DEFAULT_HOTKEY_EXIT
+)
 from utils.app_logger import debug_print
 
 
@@ -38,18 +43,27 @@ class MainApplication:
         self.source_lang = SOURCE_LANG
         self.target_lang = TARGET_LANG
 
+        # --- Load Settings ---
+        self.default_hotkeys = {
+            'word': DEFAULT_HOTKEY_WORD,
+            'sentence': DEFAULT_HOTKEY_SENTENCE,
+            'exit': DEFAULT_HOTKEY_EXIT,
+        }
+        self.settings = load_settings(SETTINGS_FILE_PATH, self.default_hotkeys)
+
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
         self.worker = TranslationWorker(self.emitter)
-        self.settings_window = SettingsWindow(self.worker, parent=None)
-        self.hotkey_manager = HotkeyManager(
-            capture_callback=self.on_capture_hotkey,
-            sentence_callback=self.on_sentence_hotkey,
-            exit_callback=self.on_exit,
-            hide_callback=self.cancel_highlight,
-        )
+        self.settings_window = SettingsWindow(self.worker, self.settings, self.default_hotkeys, parent=None)
+        self.hotkey_manager = self._create_hotkey_manager()
         self.setup_tray_icon()
         self.connect_signals()
+
+    def _create_hotkey_manager(self):
+        """Creates a new HotkeyManager instance with the current settings."""
+        callbacks = {'capture': self.on_capture_hotkey, 'sentence': self.on_sentence_hotkey, 'exit': self.on_exit}
+        hotkey_config = {'word': self.settings['word'], 'sentence': self.settings['sentence'], 'exit': self.settings['exit']}
+        return HotkeyManager(hotkey_config, callbacks, hide_callback=self.cancel_highlight)
 
     def setup_tray_icon(self):
         icon = self.app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
@@ -146,6 +160,7 @@ class MainApplication:
         self.settings_window.clear_history_requested.connect(self.on_clear_history_requested)
         self.settings_window.delete_entries_requested.connect(self.on_delete_entries_requested)
         self.settings_window.display_translation_requested.connect(self.display_cached_translation)
+        self.settings_window.settings_saved.connect(self.on_settings_saved)
 
     def run(self):
         self.worker.start()
@@ -153,17 +168,17 @@ class MainApplication:
         self.tray_icon.show()
         self.tray_icon.showMessage(
             "Floating Dictionary",
-            "Ready to work!\n- Press Ctrl+Alt+D to translate a word\n- Press Ctrl+Alt+S to translate a sentence",
+            f"Ready to work!\n- Translate word: {self.settings['word']}\n- Translate sentence: {self.settings['sentence']}",
             QSystemTrayIcon.MessageIcon.Information,
             2000,
         )
         debug_print("Floating Dictionary (Longdo + Google) is ready!")
-        debug_print(" - Press [Ctrl + Alt + D] to translate the word under the cursor")
+        debug_print(f" - Press [{self.settings['word']}] to translate the word under the cursor")
         debug_print(
-            " - Press [Ctrl + Alt + S] to enter sentence selection mode (drag to select)"
+            f" - Press [{self.settings['sentence']}] to enter sentence selection mode (drag to select)"
         )
         debug_print(" - Press [Esc] to cancel or hide the window")
-        debug_print(" - Press [Ctrl + Alt + Q] to exit the program")
+        debug_print(f" - Press [{self.settings['exit']}] to exit the program")
 
     def on_capture_hotkey(self):
         self.worker.add_job(self.source_lang, self.target_lang)
@@ -239,6 +254,21 @@ class MainApplication:
     def on_delete_entries_requested(self, cache_keys: list):
         """Deletes specific entries from history and cache."""
         self.worker.delete_entries(cache_keys)
+
+    def on_settings_saved(self, new_settings):
+        """Applies new settings, especially for hotkeys."""
+        self.settings = new_settings
+        save_settings(SETTINGS_FILE_PATH, self.settings)
+
+        # Restart hotkey manager with new settings
+        debug_print("Applying new hotkey settings...")
+        self.hotkey_manager.stop()
+        self.hotkey_manager = self._create_hotkey_manager()
+        self.hotkey_manager.start()
+
+        QMessageBox.information(self.settings_window, "Settings Saved", 
+                                "Your new settings have been applied successfully.")
+        self.settings_window.close()
 
     def display_cached_translation(self, cache_key: tuple):
         """Retrieves and displays a cached translation."""
