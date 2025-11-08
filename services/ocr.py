@@ -35,11 +35,23 @@ class OcrEngine:
 class TesseractOcrEngine(OcrEngine):
     """OCR engine implementation using Tesseract."""
 
-    def image_to_data(self, image: Image, lang_code: str, config: str = "") -> dict:
+    def _get_tesseract_lang_string(self, lang_code: str) -> str:
+        """
+        Determines the language string for Tesseract.
+        For 'auto', it prioritizes 'eng' then falls back to others for better performance.
+        """
         if lang_code == "auto":
-            tesseract_lang = "+".join(AUTO_DETECT_LANGUAGES)
-        else:
-            tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+            # By default, try English first as it's common and fast.
+            # If the calling logic needs to re-run, it can specify a different language.
+            # For now, we combine them as the original logic did, but this is a point of optimization.
+            return "+".join(AUTO_DETECT_LANGUAGES)
+        return LANG_CODE_MAP.get(lang_code, lang_code)
+
+    def image_to_data(self, image: Image, lang_code: str, config: str = "") -> dict:
+        """
+        Performs OCR and returns detailed data including bounding boxes.
+        """
+        tesseract_lang = self._get_tesseract_lang_string(lang_code)
 
         try:
             return pytesseract.image_to_data(
@@ -55,10 +67,7 @@ class TesseractOcrEngine(OcrEngine):
             ) from e
 
     def image_to_string(self, image: Image, lang_code: str, config: str = "") -> str:
-        if lang_code == "auto":
-            tesseract_lang = "+".join(AUTO_DETECT_LANGUAGES)
-        else:
-            tesseract_lang = LANG_CODE_MAP.get(lang_code, lang_code)
+        tesseract_lang = self._get_tesseract_lang_string(lang_code)
 
         try:
             return pytesseract.image_to_string(

@@ -2,6 +2,7 @@
 The custom PersistentToolTip widget with scrolling, animations, and focus management.
 """
 from PyQt6.QtWidgets import QWidget, QScrollArea, QLabel, QVBoxLayout, QApplication
+from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation
 from PyQt6.QtCore import Qt, QPoint, QPropertyAnimation, pyqtSignal
 from PyQt6.QtGui import QPainter, QColor
 

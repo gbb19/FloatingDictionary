@@ -118,8 +118,10 @@ class TranslationWorker(threading.Thread):
 
         t_start = time.time()
         try:
+            # Convert to grayscale for better OCR performance
+            grayscale_screenshot = screenshot.convert("L")
             data = self.ocr_engine.image_to_data(
-                screenshot, lang_code=job["source_lang"]
+                grayscale_screenshot, lang_code=job["source_lang"]
             )
         except OcrError as e:
             self.emitter.show_tooltip.emit(f"<i>{e}</i>", None)
