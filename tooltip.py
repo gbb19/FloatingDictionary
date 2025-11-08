@@ -22,9 +22,9 @@ class PersistentToolTip(QWidget):
     A custom tooltip widget that can be controlled programmatically,
     supports scrolling, animations, and does not steal focus.
     """
-    # Signal emitted when the tooltip is clicked, requesting dismissal.
-    dismiss_requested = pyqtSignal()
     def __init__(self):
+        # Signal emitted when the tooltip is clicked, requesting dismissal.
+        self.dismiss_requested = pyqtSignal()
         super().__init__()
         # Set window flags to be a frameless, always-on-top popup.
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)

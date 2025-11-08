@@ -133,6 +133,7 @@ class MainApplication:
         self.overlay.translate_all_requested.connect(self.on_translate_all_requested)
         self.overlay.words_selected.connect(self.on_words_selected)
         self.overlay.dismiss_requested.connect(self.cancel_highlight)
+        self.tooltip.dismiss_requested.connect(self.cancel_highlight)
 
     def run(self):
         self.worker.start()
