@@ -6,13 +6,19 @@ load_dotenv()
 
 # --- Environment ---
 APP_ENV = os.getenv("APP_ENV", "prod")  # Can be 'dev' or 'prod'
+APP_NAME = "FloatingDictionary"
+
+# --- Application Data Path (for settings and history) ---
+# This ensures data is stored in a persistent location (e.g., C:\Users\YourUser\AppData\Roaming\FloatingDictionary)
+APP_DATA_DIR = os.path.join(os.getenv('APPDATA'), APP_NAME)
+os.makedirs(APP_DATA_DIR, exist_ok=True) # Create the directory if it doesn't exist
 
 # --- Data Store Configuration ---
-DATA_FILE_PATH = "dictionary_data.json"
+DATA_FILE_PATH = os.path.join(APP_DATA_DIR, "dictionary_data.json")
 MAX_HISTORY_ENTRIES = 100 # Maximum number of entries to keep in history
 
 # --- Hotkey Configuration ---
-SETTINGS_FILE_PATH = "settings.json"
+SETTINGS_FILE_PATH = os.path.join(APP_DATA_DIR, "settings.json")
 DEFAULT_HOTKEY_WORD = "Ctrl+Alt+D"
 DEFAULT_HOTKEY_SENTENCE = "Ctrl+Alt+S"
 DEFAULT_HOTKEY_EXIT = "Ctrl+Alt+Q"
