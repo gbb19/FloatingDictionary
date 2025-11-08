@@ -7,6 +7,9 @@ load_dotenv()
 # --- Environment ---
 APP_ENV = os.getenv("APP_ENV", "prod")  # Can be 'dev' or 'prod'
 
+# --- Cache Configuration ---
+CACHE_FILE_PATH = "translation_cache.json"
+
 # --- OCR and Language Configuration ---
 OCR_ENGINE = "tesseract"
 SOURCE_LANG = "auto"  # Default source language ('auto' for detection)

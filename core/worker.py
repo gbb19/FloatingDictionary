@@ -10,14 +10,14 @@ import time
 import asyncio
 import re
 
-from config import CAPTURE_WIDTH, CAPTURE_HEIGHT
+from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, CACHE_FILE_PATH
 from services.ocr import get_ocr_engine, OcrError
 from services.translation import (
     async_translate,
     fetch_longdo_word_async,
     parse_longdo_data,
-    get_google_translation_sync,
 )
+from core.file_cache import load_cache, save_cache
 from ui.formatter import format_combined_data
 from utils.app_logger import debug_print
 
@@ -27,9 +27,17 @@ class TranslationWorker(threading.Thread):
         super().__init__(daemon=True)
         self.queue = Queue()
         self.emitter = emitter
-        self.translation_cache = {}
         self.last_processed_box = None
         self.ocr_engine = get_ocr_engine()
+        self.translation_cache = self._load_initial_cache()
+
+    def _run_async_task(self, task):
+        """Runs an async task in a new event loop."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        result = loop.run_until_complete(task)
+        loop.close()
+        return result
 
     def run(self):
         while True:
@@ -37,6 +45,11 @@ class TranslationWorker(threading.Thread):
             if job is None:
                 break
             self._process_job(job)
+
+    def _load_initial_cache(self):
+        """Loads the cache from the file at startup."""
+        debug_print(f"Loading cache from '{CACHE_FILE_PATH}'...")
+        return load_cache(CACHE_FILE_PATH)
 
     def add_job(self, source_lang, target_lang):
         x, y = pyautogui.position()
@@ -184,14 +197,13 @@ class TranslationWorker(threading.Thread):
             return
 
         self.emitter.show_tooltip.emit("<i>Translating sentence...</i>", bounding_rect)
-        google_result = get_google_translation_sync(
-            sentence, dest_lang=target_lang, src_lang=source_lang
-        )
+        
+        task = async_translate(sentence, dest_lang=target_lang, src_lang=source_lang)
+        google_result = self._run_async_task(task)
 
         google_translation = (
             google_result.text if hasattr(google_result, "text") else str(google_result)
         )
-
         formatted_text = (
             f"<p style='font-size: 14pt;'><b>{source_lang.upper()}:</b> {sentence}</p><hr>"
             f"<p style='font-size: 14pt;'><b>{target_lang.upper()}:</b> {google_translation}</p>"
@@ -257,10 +269,7 @@ class TranslationWorker(threading.Thread):
                 longdo_soup = results[1] if len(results) > 1 else None
                 return google_result, longdo_soup
 
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            google_result, longdo_soup = loop.run_until_complete(_fetch_concurrently())
-            loop.close()
+            google_result, longdo_soup = self._run_async_task(_fetch_concurrently())
 
             t_translate_done = time.time()
             debug_print(
@@ -284,6 +293,8 @@ class TranslationWorker(threading.Thread):
                 longdo_data, google_translation, search_word, detected_lang, target_lang
             )
             self.translation_cache[cache_key] = formatted_translation
+            # Save the updated cache to the file
+            save_cache(CACHE_FILE_PATH, self.translation_cache)
         else:
             debug_print(f"Fetching from cache: {search_word}")
             debug_print(f"[PROFILING] Translation from cache took: 0.0000 seconds")
