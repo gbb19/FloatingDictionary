@@ -4,9 +4,12 @@ Handles fetching translation data from external services (Longdo, Google Transla
 
 import asyncio
 import re
+
 import aiohttp
-from bs4 import BeautifulSoup
+from aiohttp import ClientTimeout
+from bs4 import BeautifulSoup, Tag
 from googletrans import Translator
+
 from utils.app_logger import debug_print
 
 # --- Google Translate ---
@@ -52,7 +55,9 @@ async def fetch_longdo_word_async(word: str) -> BeautifulSoup | None:
     }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=5) as response:
+            async with session.get(
+                url, headers=headers, timeout=ClientTimeout(total=5)
+            ) as response:
                 response.raise_for_status()
                 text = await response.text(encoding="utf-8")
                 soup = BeautifulSoup(text, "html.parser")
@@ -68,7 +73,7 @@ def parse_longdo_data(soup: BeautifulSoup) -> dict:
     target_dict_names = ["NECTEC Lexitron Dictionary EN-TH", "Nontri Dictionary"]
 
     for dict_name in target_dict_names:
-        header = soup.find("b", string=dict_name)
+        header = soup.find("b", text=dict_name)
         if header:
             table = header.find_next_sibling("table", class_="result-table")
             if table:
@@ -118,9 +123,9 @@ def parse_longdo_data(soup: BeautifulSoup) -> dict:
     # Find the table for example sentences. The header text is in Thai.
     string_element = soup.find(string=re.compile(r"^\s*ตัวอย่างประโยคจาก Open Subtitles"))
     table = None
-    if string_element:
+    if string_element is not None:
         header = string_element.parent
-        if hasattr(header, "find_next_sibling"):
+        if isinstance(header, Tag):
             table = header.find_next_sibling("table", class_="result-table")
 
     if table:

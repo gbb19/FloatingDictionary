@@ -2,22 +2,25 @@
 The main worker thread for handling OCR and translation tasks.
 """
 
-import pyautogui
-from queue import Queue
-import threading
-import time
-
 import asyncio
 import re
+import threading
+import time
+from queue import Queue
 
-from config import CAPTURE_WIDTH, CAPTURE_HEIGHT, DATA_FILE_PATH, MAX_HISTORY_ENTRIES
-from services.ocr import get_ocr_engine, OcrError
+import pyautogui
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
+from googletrans.models import Translated
+
+from config import CAPTURE_HEIGHT, CAPTURE_WIDTH, DATA_FILE_PATH, MAX_HISTORY_ENTRIES
+from core.data_manager import load_data, save_data, update_entry
+from services.ocr import OcrError, get_ocr_engine
 from services.translation import (
     async_translate,
     fetch_longdo_word_async,
     parse_longdo_data,
 )
-from core.data_manager import load_data, save_data, update_entry
 from ui.formatter import format_combined_data
 from utils.app_logger import debug_print
 
@@ -126,7 +129,7 @@ class TranslationWorker(threading.Thread):
 
     def stop(self):
         self.queue.put(None)
-        save_data(DATA_FILE_PATH, self.dictionary_data) # Save data on exit
+        save_data(DATA_FILE_PATH, self.dictionary_data)  # Save data on exit
 
     def _process_job(self, job):
         if job.get("is_ocr_and_translate", False):
@@ -215,13 +218,14 @@ class TranslationWorker(threading.Thread):
             return
 
         self.emitter.show_tooltip.emit("<i>Translating sentence...</i>", bounding_rect)
-        
+
         task = async_translate(sentence, dest_lang=target_lang, src_lang=source_lang)
         google_result = self._run_async_task(task)
 
-        google_translation = (
-            google_result.text if hasattr(google_result, "text") else str(google_result)
-        )
+        if isinstance(google_result, (Tag, NavigableString)):
+            google_translation = google_result.text
+        else:
+            google_translation = str(google_result)
         formatted_text = (
             f"<p style='font-size: 14pt;'><b>{source_lang.upper()}:</b> {sentence}</p><hr>"
             f"<p style='font-size: 14pt;'><b>{target_lang.upper()}:</b> {google_translation}</p>"
@@ -298,32 +302,52 @@ class TranslationWorker(threading.Thread):
                 self.emitter.show_tooltip.emit(str(google_result), box)
                 return
 
-            detected_lang = google_result.src
-            google_translation = google_result.text
+            if isinstance(google_result, Translated):
+                detected_lang = google_result.src
+                google_translation = google_result.text
+            else:
+                detected_lang = source_lang
+                google_translation = str(google_result)
+
             debug_print(f"Google detected '{search_word}' as language: {detected_lang}")
 
             longdo_data = None
-            if longdo_soup:
+            if isinstance(longdo_soup, BeautifulSoup):
                 debug_print("Processing Longdo data...")
                 longdo_data = parse_longdo_data(longdo_soup)
 
             formatted_translation = format_combined_data(
-                longdo_data, google_translation, search_word, detected_lang, target_lang
+                longdo_data,
+                google_translation,
+                search_word,
+                detected_lang,
+                target_lang,
             )
-            
+
             # If the original source was 'auto', create a new, more specific cache key
             # with the language that Google actually detected.
-            final_cache_key = (search_word, detected_lang, target_lang) if source_lang == "auto" else cache_key
+            final_cache_key = (
+                (search_word, detected_lang, target_lang)
+                if source_lang == "auto"
+                else cache_key
+            )
 
             # Update the central data store
-            update_entry(self.dictionary_data, final_cache_key, formatted_translation, MAX_HISTORY_ENTRIES)
-            
-            self.emitter.history_updated.emit(self.dictionary_data) # Notify main thread about update
+            update_entry(
+                self.dictionary_data,
+                final_cache_key,
+                formatted_translation,
+                MAX_HISTORY_ENTRIES,
+            )
+
+            self.emitter.history_updated.emit(
+                self.dictionary_data
+            )  # Notify main thread about update
             save_data(DATA_FILE_PATH, self.dictionary_data)
         else:
             debug_print(f"Fetching from cache: {search_word}")
-            debug_print(f"[PROFILING] Translation from cache took: 0.0000 seconds")
-            formatted_translation = self.dictionary_data[cache_key]['html']
+            debug_print("[PROFILING] Translation from cache took: 0.0000 seconds")
+            formatted_translation = self.dictionary_data[cache_key]["html"]
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")

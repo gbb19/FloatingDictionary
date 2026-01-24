@@ -1,5 +1,8 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
+from platformdirs import user_data_dir
 
 # Load environment variables from .env file
 load_dotenv()
@@ -10,12 +13,15 @@ APP_NAME = "FloatingDictionary"
 
 # --- Application Data Path (for settings and history) ---
 # This ensures data is stored in a persistent location (e.g., C:\Users\YourUser\AppData\Roaming\FloatingDictionary)
-APP_DATA_DIR = os.path.join(os.getenv('APPDATA'), APP_NAME)
-os.makedirs(APP_DATA_DIR, exist_ok=True) # Create the directory if it doesn't exist
+
+
+APP_DATA_DIR = Path(user_data_dir(APP_NAME))
+
+os.makedirs(APP_DATA_DIR, exist_ok=True)  # Create the directory if it doesn't exist
 
 # --- Data Store Configuration ---
 DATA_FILE_PATH = os.path.join(APP_DATA_DIR, "dictionary_data.json")
-MAX_HISTORY_ENTRIES = 100 # Maximum number of entries to keep in history
+MAX_HISTORY_ENTRIES = 100  # Maximum number of entries to keep in history
 
 # --- Hotkey Configuration ---
 SETTINGS_FILE_PATH = os.path.join(APP_DATA_DIR, "settings.json")

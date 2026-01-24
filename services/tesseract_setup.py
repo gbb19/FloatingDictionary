@@ -2,23 +2,23 @@
 Handles the setup and initialization of Tesseract OCR.
 """
 
-import sys
 import os
 import platform
 import subprocess
+import sys
+
 import pytesseract
+
 from utils.app_logger import debug_print
 
 
-def get_executable_path(name):
+def get_executable_path(name: str) -> str:
     """
     Finds the path of a file bundled with the application (for PyInstaller).
     """
     if getattr(sys, "frozen", False):
-        # Running from a bundled .exe
-        base_path = sys._MEIPASS
+        base_path = getattr(sys, "_MEIPASS")
     else:
-        # Running from a .py script
         base_path = os.path.abspath(".")
     return os.path.join(base_path, name)
 

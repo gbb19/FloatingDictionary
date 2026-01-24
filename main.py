@@ -1,27 +1,34 @@
 import sys
 from functools import partial
+from typing import Optional, Union
+
+from PyQt6.QtCore import QObject, QRect, pyqtSignal
+from PyQt6.QtGui import QAction, QActionGroup, QCursor
 from PyQt6.QtWidgets import (
     QApplication,
-    QSystemTrayIcon,
     QMenu,
     QMessageBox,
     QStyle,
+    QSystemTrayIcon,
     QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, QObject, QPoint, QRect
-from PyQt6.QtGui import QCursor, QGuiApplication, QAction, QActionGroup
 
-from services.tesseract_setup import initialize_tesseract
-from ui.overlay import Overlay
-from ui.tooltip import PersistentToolTip
-from ui.settings_window import SettingsWindow
-from core.worker import TranslationWorker
+from config import (
+    DEFAULT_HOTKEY_EXIT,
+    DEFAULT_HOTKEY_SENTENCE,
+    DEFAULT_HOTKEY_WORD,
+    LANG_CODE_MAP,
+    SETTINGS_FILE_PATH,
+    SOURCE_LANG,
+    TARGET_LANG,
+)
 from core.hotkey_manager import HotkeyManager
 from core.settings_manager import load_settings, save_settings
-from config import (
-    SOURCE_LANG, TARGET_LANG, LANG_CODE_MAP, 
-    SETTINGS_FILE_PATH, DEFAULT_HOTKEY_WORD, DEFAULT_HOTKEY_SENTENCE, DEFAULT_HOTKEY_EXIT
-)
+from core.worker import TranslationWorker
+from services.tesseract_setup import initialize_tesseract
+from ui.overlay import Overlay
+from ui.settings_window import SettingsWindow
+from ui.tooltip import PersistentToolTip
 from utils.app_logger import debug_print
 
 
@@ -45,30 +52,44 @@ class MainApplication:
 
         # --- Load Settings ---
         self.default_hotkeys = {
-            'word': DEFAULT_HOTKEY_WORD,
-            'sentence': DEFAULT_HOTKEY_SENTENCE,
-            'exit': DEFAULT_HOTKEY_EXIT,
+            "word": DEFAULT_HOTKEY_WORD,
+            "sentence": DEFAULT_HOTKEY_SENTENCE,
+            "exit": DEFAULT_HOTKEY_EXIT,
         }
         self.settings = load_settings(SETTINGS_FILE_PATH, self.default_hotkeys)
 
         self.overlay = Overlay()
         self.tooltip = PersistentToolTip()
         self.worker = TranslationWorker(self.emitter)
-        self.settings_window = SettingsWindow(self.worker, self.settings, self.default_hotkeys, parent=None)
+        self.settings_window = SettingsWindow(
+            self.worker, self.settings, self.default_hotkeys, parent=None
+        )
         self.hotkey_manager = self._create_hotkey_manager()
         self.setup_tray_icon()
         self.connect_signals()
 
     def _create_hotkey_manager(self):
         """Creates a new HotkeyManager instance with the current settings."""
-        callbacks = {'capture': self.on_capture_hotkey, 'sentence': self.on_sentence_hotkey, 'exit': self.on_exit}
-        hotkey_config = {'word': self.settings['word'], 'sentence': self.settings['sentence'], 'exit': self.settings['exit']}
-        return HotkeyManager(hotkey_config, callbacks, hide_callback=self.cancel_highlight)
+        callbacks = {
+            "capture": self.on_capture_hotkey,
+            "sentence": self.on_sentence_hotkey,
+            "exit": self.on_exit,
+        }
+        hotkey_config = {
+            "word": self.settings["word"],
+            "sentence": self.settings["sentence"],
+            "exit": self.settings["exit"],
+        }
+        return HotkeyManager(
+            hotkey_config, callbacks, hide_callback=self.cancel_highlight
+        )
 
     def setup_tray_icon(self):
         icon = self.app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.tray_icon = QSystemTrayIcon(icon, parent=self.app)
-        self.settings_window.setWindowIcon(icon) # Set the same icon for the settings window
+        self.settings_window.setWindowIcon(
+            icon
+        )  # Set the same icon for the settings window
         self.tray_icon.setToolTip("FloatingDictionary")
 
         self.tray_menu = QMenu(self.dummy_parent_widget)
@@ -157,9 +178,15 @@ class MainApplication:
         self.overlay.words_selected.connect(self.on_words_selected)
         self.overlay.dismiss_requested.connect(self.cancel_highlight)
         self.tooltip.dismiss_requested.connect(self.cancel_highlight)
-        self.settings_window.clear_history_requested.connect(self.on_clear_history_requested)
-        self.settings_window.delete_entries_requested.connect(self.on_delete_entries_requested)
-        self.settings_window.display_translation_requested.connect(self.display_cached_translation)
+        self.settings_window.clear_history_requested.connect(
+            self.on_clear_history_requested
+        )
+        self.settings_window.delete_entries_requested.connect(
+            self.on_delete_entries_requested
+        )
+        self.settings_window.display_translation_requested.connect(
+            self.display_cached_translation
+        )
         self.settings_window.settings_saved.connect(self.on_settings_saved)
 
     def run(self):
@@ -173,7 +200,9 @@ class MainApplication:
             2000,
         )
         debug_print("Floating Dictionary (Longdo + Google) is ready!")
-        debug_print(f" - Press [{self.settings['word']}] to translate the word under the cursor")
+        debug_print(
+            f" - Press [{self.settings['word']}] to translate the word under the cursor"
+        )
         debug_print(
             f" - Press [{self.settings['sentence']}] to enter sentence selection mode (drag to select)"
         )
@@ -202,8 +231,14 @@ class MainApplication:
     def blink_highlight(self, box_to_blink):
         self.overlay.enter_dismiss_mode(box_to_blink)
 
-    def on_show_tooltip(self, text, position_hint):
+    def on_show_tooltip(
+        self,
+        text: str,
+        position_hint: Optional[Union[dict, QRect]],
+    ) -> None:
         pos = QCursor.pos()
+        rect: Optional[QRect] = None
+
         if isinstance(position_hint, dict):
             rect = QRect(
                 position_hint["left"],
@@ -212,20 +247,23 @@ class MainApplication:
                 position_hint["height"],
             )
             pos = rect.topRight()
+
         elif isinstance(position_hint, QRect):
-            pos = position_hint.center()
+            rect = position_hint
+            pos = rect.center()
 
         self.tooltip.show_at(pos, text)
 
-        is_final_result = "<i>" not in text and text
-        if is_final_result and position_hint:
-            self.overlay.enter_dismiss_mode(position_hint)
+        is_final_result: bool = "<i>" not in text and bool(text)
+
+        if is_final_result and rect is not None:
+            self.overlay.enter_dismiss_mode(rect)
             self.tooltip.raise_()
 
     def cancel_highlight(self):
         self.overlay.exit_selection_mode()
         self.tooltip.start_hide_animation()
-    
+
     def enter_sentence_mode(self):
         self.overlay.enter_region_selection_mode()
 
@@ -259,7 +297,7 @@ class MainApplication:
     def on_clear_history_requested(self):
         """Clears history and cache when requested from the settings window."""
         self.worker.clear_history_and_cache()
-    
+
     def on_delete_entries_requested(self, cache_keys: list):
         """Deletes specific entries from history and cache."""
         self.worker.delete_entries(cache_keys)
@@ -276,15 +314,20 @@ class MainApplication:
         """Applies new settings, especially for hotkeys."""
         self.settings = new_settings
         save_settings(SETTINGS_FILE_PATH, self.settings)
-        self.restart_hotkey_manager() # Restart with the new settings
+        self.restart_hotkey_manager()  # Restart with the new settings
 
-        QMessageBox.information(self.settings_window, "Settings Saved", 
-                                "Your new settings have been applied successfully.")
+        QMessageBox.information(
+            self.settings_window,
+            "Settings Saved",
+            "Your new settings have been applied successfully.",
+        )
         self.settings_window.close()
 
     def display_cached_translation(self, cache_key: tuple):
         """Retrieves and displays a cached translation."""
-        formatted_translation = self.worker.dictionary_data.get(cache_key, {}).get('html')
+        formatted_translation = self.worker.dictionary_data.get(cache_key, {}).get(
+            "html"
+        )
         if formatted_translation:
             # Display at current cursor position, as there's no specific box for history recall
             current_pos = QCursor.pos()

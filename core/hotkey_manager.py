@@ -3,6 +3,7 @@ Manages system-wide hotkeys using pynput.
 """
 
 from pynput import keyboard as pynput_keyboard
+
 from utils.app_logger import debug_print
 
 
@@ -14,16 +15,22 @@ class HotkeyManager:
 
         self.hotkeys = [
             pynput_keyboard.HotKey(
-                pynput_keyboard.HotKey.parse(self._to_pynput_format(hotkey_config['word'])),
-                lambda: self._on_activate("word", callbacks['capture']),
+                pynput_keyboard.HotKey.parse(
+                    self._to_pynput_format(hotkey_config["word"])
+                ),
+                lambda: self._on_activate("word", callbacks["capture"]),
             ),
             pynput_keyboard.HotKey(
-                pynput_keyboard.HotKey.parse(self._to_pynput_format(hotkey_config['sentence'])),
-                lambda: self._on_activate("sentence", callbacks['sentence']),
+                pynput_keyboard.HotKey.parse(
+                    self._to_pynput_format(hotkey_config["sentence"])
+                ),
+                lambda: self._on_activate("sentence", callbacks["sentence"]),
             ),
             pynput_keyboard.HotKey(
-                pynput_keyboard.HotKey.parse(self._to_pynput_format(hotkey_config['exit'])),
-                lambda: self._on_activate("exit", callbacks['exit']),
+                pynput_keyboard.HotKey.parse(
+                    self._to_pynput_format(hotkey_config["exit"])
+                ),
+                lambda: self._on_activate("exit", callbacks["exit"]),
             ),
         ]
         self.listener = pynput_keyboard.Listener(
@@ -32,7 +39,9 @@ class HotkeyManager:
 
     def _on_activate(self, hotkey_name, callback):
         """Wrapper to print a debug message before executing the callback."""
-        debug_print(f"Hotkey '{self.hotkey_config[hotkey_name]}' triggered ({hotkey_name.capitalize()}).")
+        debug_print(
+            f"Hotkey '{self.hotkey_config[hotkey_name]}' triggered ({hotkey_name.capitalize()})."
+        )
         callback()
 
     def on_press(self, key):
@@ -62,11 +71,11 @@ class HotkeyManager:
 
     def _to_pynput_format(self, qt_key_sequence: str) -> str:
         """Converts a Qt key sequence string (e.g., 'Ctrl+Alt+D') to pynput format (e.g., '<ctrl>+<alt>+d')."""
-        parts = qt_key_sequence.lower().split('+')
+        parts = qt_key_sequence.lower().split("+")
         pynput_parts = []
         for part in parts:
             # Modifier keys and special keys go in angle brackets
-            if part in ['ctrl', 'alt', 'shift', 'cmd', 'win', 'command']:
+            if part in ["ctrl", "alt", "shift", "cmd", "win", "command"]:
                 pynput_parts.append(f"<{part}>")
             else:
                 # Regular character keys do not

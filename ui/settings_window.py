@@ -2,15 +2,43 @@
 The settings window for the Floating Dictionary application.
 Provides UI for managing history, hotkeys, and other configurations.
 """
-import win32gui
-from datetime import datetime, date
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QTabWidget, QWidget, QTableWidget, QListWidget, QFormLayout,
-    QTableWidgetItem, QLineEdit, QPushButton, QHBoxLayout, QHeaderView,
-    QAbstractItemView, QMessageBox, QApplication, QKeySequenceEdit
-)
+
+import sys
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Optional
+
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QKeySequence
+from PyQt6.QtGui import QCloseEvent, QKeySequence, QShowEvent
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QKeySequenceEdit,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+IS_WINDOWS = sys.platform.startswith("win32")
+
+if TYPE_CHECKING:
+    import win32gui
+else:
+    win32gui: Optional[object] = None
+
+if IS_WINDOWS:
+    import win32gui  # runtime import
+
 
 class SettingsWindow(QDialog):
     # Signals to communicate back to the main application
@@ -33,7 +61,7 @@ class SettingsWindow(QDialog):
 
         # --- Main Layout ---
         main_layout = QVBoxLayout(self)
-        
+
         # --- Tab Widget ---
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet("""
@@ -60,7 +88,7 @@ class SettingsWindow(QDialog):
     def _create_history_tab(self):
         """Creates the UI for the History tab."""
         widget = QWidget()
-        
+
         # Main layout with a left-side group list and a right-side content area
         main_layout = QHBoxLayout(widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -78,7 +106,7 @@ class SettingsWindow(QDialog):
                 padding-top: 5px;
             }
             QListWidget::item { padding: 8px; }
-            QListWidget::item:selected { 
+            QListWidget::item:selected {
                 background-color: #0078d7;
                 border: none; /* Explicitly remove border on selection */
                 outline: none; /* Remove the default focus rectangle */
@@ -97,7 +125,7 @@ class SettingsWindow(QDialog):
         self.history_search_input = QLineEdit()
         self.history_search_input.setPlaceholderText("Search for a word...")
         self.history_search_input.textChanged.connect(self.update_history_view)
-        
+
         self.history_refresh_button = QPushButton("Refresh")
         self.history_refresh_button.clicked.connect(self.populate_history_table)
 
@@ -105,7 +133,9 @@ class SettingsWindow(QDialog):
         self.history_delete_button.clicked.connect(self.delete_selected_history_items)
 
         self.history_clear_button = QPushButton("Clear All History")
-        self.history_clear_button.setStyleSheet("background-color: #8B0000; color: white;")
+        self.history_clear_button.setStyleSheet(
+            "background-color: #8B0000; color: white;"
+        )
         self.history_clear_button.clicked.connect(self.confirm_clear_history)
 
         controls_layout.addWidget(self.history_search_input)
@@ -121,23 +151,36 @@ class SettingsWindow(QDialog):
         self.history_table.setHorizontalHeaderLabels(["ID", "Word", "To", "Date"])
         self.history_table.setColumnHidden(0, True)
         self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.history_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.history_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
         self.history_table.setSortingEnabled(True)
-        self.history_table.verticalHeader().setVisible(False)
-        self.history_table.itemDoubleClicked.connect(self.on_history_item_doubled_clicked)
+        header = self.history_table.verticalHeader()
+        if header is not None:
+            header.setVisible(False)
+        self.history_table.itemDoubleClicked.connect(
+            self.on_history_item_doubled_clicked
+        )
 
         header = self.history_table.horizontalHeader()
-        header.setStyleSheet("""
-            QHeaderView::section { font-size: 10pt; font-weight: bold; padding: 4px; }
-        """)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        if header is not None:
+            header.setStyleSheet("""
+                QHeaderView::section {
+                    font-size: 10pt;
+                    font-weight: bold;
+                    padding: 4px;
+                }
+            """)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
 
         content_layout.addWidget(self.history_table)
-        
+
         main_layout.addWidget(self.language_list)
         main_layout.addWidget(content_widget)
 
@@ -146,23 +189,25 @@ class SettingsWindow(QDialog):
     def populate_history_table(self):
         """Fills the history table with data from the worker."""
         dictionary_data = self.worker.dictionary_data
-        
+
         today = date.today()
-        
+
         # Sort items by timestamp descending to get correct IDs
-        sorted_items = sorted(dictionary_data.items(), key=lambda item: item[1]['timestamp'], reverse=True)
+        sorted_items = sorted(
+            dictionary_data.items(), key=lambda item: item[1]["timestamp"], reverse=True
+        )
 
         # --- Populate Language List (Left Panel) ---
-        self.language_list.blockSignals(True) # Block signals while we modify it
+        self.language_list.blockSignals(True)  # Block signals while we modify it
         self.language_list.clear()
         self.language_list.addItem("All Languages")
-        
+
         # Get unique source languages and sort them
         src_languages = sorted(list(set(key[1] for key, data in sorted_items)))
         for lang in src_languages:
             self.language_list.addItem(lang.upper())
-        
-        self.language_list.setCurrentRow(0) # Select "All Languages" by default
+
+        self.language_list.setCurrentRow(0)  # Select "All Languages" by default
         self.language_list.blockSignals(False)
 
         # --- Populate Table (Right Panel) ---
@@ -174,13 +219,17 @@ class SettingsWindow(QDialog):
         self.history_table.setRowCount(0)
         dictionary_data = self.worker.dictionary_data
         today = date.today()
-        
+
         search_text = self.history_search_input.text().lower()
         selected_lang_item = self.language_list.currentItem()
-        selected_lang = selected_lang_item.text().lower() if selected_lang_item else "all languages"
+        selected_lang = (
+            selected_lang_item.text().lower() if selected_lang_item else "all languages"
+        )
 
         # Sort items by timestamp descending to get correct IDs
-        sorted_items = sorted(dictionary_data.items(), key=lambda item: item[1]['timestamp'], reverse=True)
+        sorted_items = sorted(
+            dictionary_data.items(), key=lambda item: item[1]["timestamp"], reverse=True
+        )
 
         for i, (cache_key, data) in enumerate(sorted_items):
             word, src_lang, dest_lang = cache_key
@@ -188,20 +237,20 @@ class SettingsWindow(QDialog):
             # Filter by selected language
             if selected_lang != "all languages" and src_lang != selected_lang:
                 continue
-            
+
             # Filter by search text
             if search_text and search_text not in word.lower():
                 continue
 
-            dt_object = datetime.fromisoformat(data['timestamp'])
+            dt_object = datetime.fromisoformat(data["timestamp"])
             if dt_object.date() == today:
                 timestamp_str = f"Today, {dt_object.strftime('%H:%M')}"
             else:
-                timestamp_str = dt_object.strftime('%Y-%m-%d %H:%M')
+                timestamp_str = dt_object.strftime("%Y-%m-%d %H:%M")
 
             row_position = self.history_table.rowCount()
             self.history_table.insertRow(row_position)
-            
+
             # Create items for each column
             id_item = QTableWidgetItem(str(i + 1))
             word_item = QTableWidgetItem(word.capitalize())
@@ -223,50 +272,76 @@ class SettingsWindow(QDialog):
         """Handles double-clicking on a history item."""
         # The item clicked is in some column, but we want the data from the 'Word' column (col 1)
         word_item = self.history_table.item(item.row(), 1)
+        if word_item is None:
+            return
+
         word_to_copy = word_item.text()
-        QApplication.clipboard().setText(word_to_copy)
+
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(word_to_copy)
 
     def delete_selected_history_items(self):
         """Gathers selected items and emits a signal to request their deletion."""
-        selected_rows = sorted(list(set(index.row() for index in self.history_table.selectedIndexes())), reverse=True)
+        selected_rows = sorted(
+            list(set(index.row() for index in self.history_table.selectedIndexes())),
+            reverse=True,
+        )
         keys_to_delete = []
         for row in selected_rows:
-            word_item = self.history_table.item(row, 1) # Get item from the 'Word' column
+            word_item = self.history_table.item(
+                row, 1
+            )  # Get item from the 'Word' column
+            if word_item is None:
+                return
             cache_key = word_item.data(Qt.ItemDataRole.UserRole)
             if cache_key:
                 keys_to_delete.append(cache_key)
-        
+
         if keys_to_delete:
             self.delete_entries_requested.emit(keys_to_delete)
-            self.populate_history_table() # Refresh view immediately
+            self.populate_history_table()  # Refresh view immediately
 
     def confirm_clear_history(self):
         """Shows a confirmation dialog before clearing history."""
-        reply = QMessageBox.question(self, 'Confirm Clear', 
-                                     "Are you sure you want to delete all translation history and cache?\nThis action cannot be undone.",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
-                                     QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Clear",
+            "Are you sure you want to delete all translation history and cache?\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
 
         if reply == QMessageBox.StandardButton.Yes:
             self.clear_history_requested.emit()
-            self.populate_history_table() # Refresh the table view
+            self.populate_history_table()  # Refresh the table view
 
-    def showEvent(self, event):
-        """Override showEvent to populate history when the window is shown."""
-        super().showEvent(event)
+    def showEvent(self, a0: QShowEvent | None) -> None:
+        if a0 is not None:
+            super().showEvent(a0)
+
+        # Populate history (แนะนำให้ผูกกับ tab change ด้วย)
         if self.tab_widget.currentWidget() == self.history_tab:
             self.populate_history_table()
-        # Store the handle of the currently active window before this one shows
-        self.last_active_window = win32gui.GetForegroundWindow()
 
-    def closeEvent(self, event):
-        """Override closeEvent to restore focus to the last active window."""
-        super().closeEvent(event)
-        if self.last_active_window:
+        # Windows only: store last active window
+        if IS_WINDOWS:
+            try:
+                self.last_active_window = win32gui.GetForegroundWindow()
+            except Exception:
+                self.last_active_window = None
+        else:
+            self.last_active_window = None
+
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
+        if a0 is not None:
+            super().closeEvent(a0)
+
+        if IS_WINDOWS and self.last_active_window is not None:
             try:
                 win32gui.SetForegroundWindow(self.last_active_window)
             except Exception as e:
-                # This might fail if the window was closed, which is fine.
+                # ปกติ Windows จะ fail ได้ถ้า window ถูก destroy ไปแล้ว
                 print(f"Could not restore focus to window: {e}")
 
     def _create_settings_tab(self):
@@ -284,21 +359,27 @@ class SettingsWindow(QDialog):
         form_layout.setSpacing(10)
         form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        self.hotkey_word_edit = QKeySequenceEdit(QKeySequence(self.current_settings['word']))
-        self.hotkey_sentence_edit = QKeySequenceEdit(QKeySequence(self.current_settings['sentence']))
-        self.hotkey_exit_edit = QKeySequenceEdit(QKeySequence(self.current_settings['exit']))
+        self.hotkey_word_edit = QKeySequenceEdit(
+            QKeySequence(self.current_settings["word"])
+        )
+        self.hotkey_sentence_edit = QKeySequenceEdit(
+            QKeySequence(self.current_settings["sentence"])
+        )
+        self.hotkey_exit_edit = QKeySequenceEdit(
+            QKeySequence(self.current_settings["exit"])
+        )
 
         form_layout.addRow("Translate Word:", self.hotkey_word_edit)
         form_layout.addRow("Translate Sentence:", self.hotkey_sentence_edit)
         form_layout.addRow("Exit Program:", self.hotkey_exit_edit)
-        
+
         main_layout.addLayout(form_layout)
         main_layout.addStretch()
 
         # --- Action Buttons ---
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        
+
         self.reset_button = QPushButton("Reset to Defaults")
         self.reset_button.clicked.connect(self.reset_settings_to_defaults)
         button_layout.addWidget(self.reset_button)
@@ -329,7 +410,9 @@ class SettingsWindow(QDialog):
         desc_label.setWordWrap(True)
         main_layout.addWidget(desc_label)
 
-        github_label = QLabel("<a href='https://github.com/gbb19/FloatingDictionary' style='color: #0078d7;'>View on GitHub</a>")
+        github_label = QLabel(
+            "<a href='https://github.com/gbb19/FloatingDictionary' style='color: #0078d7;'>View on GitHub</a>"
+        )
         github_label.setOpenExternalLinks(True)
         main_layout.addWidget(github_label)
 
@@ -338,15 +421,21 @@ class SettingsWindow(QDialog):
     def save_settings(self):
         """Emits a signal with the new settings to be saved."""
         new_settings = {
-            'word': self.hotkey_word_edit.keySequence().toString(),
-            'sentence': self.hotkey_sentence_edit.keySequence().toString(),
-            'exit': self.hotkey_exit_edit.keySequence().toString(),
+            "word": self.hotkey_word_edit.keySequence().toString(),
+            "sentence": self.hotkey_sentence_edit.keySequence().toString(),
+            "exit": self.hotkey_exit_edit.keySequence().toString(),
         }
         self.settings_saved.emit(new_settings)
-        self.accept() # Close the dialog and signal acceptance
+        self.accept()  # Close the dialog and signal acceptance
 
     def reset_settings_to_defaults(self):
         """Resets the hotkey edit fields to their default values."""
-        self.hotkey_word_edit.setKeySequence(QKeySequence(self.default_settings['word']))
-        self.hotkey_sentence_edit.setKeySequence(QKeySequence(self.default_settings['sentence']))
-        self.hotkey_exit_edit.setKeySequence(QKeySequence(self.default_settings['exit']))
+        self.hotkey_word_edit.setKeySequence(
+            QKeySequence(self.default_settings["word"])
+        )
+        self.hotkey_sentence_edit.setKeySequence(
+            QKeySequence(self.default_settings["sentence"])
+        )
+        self.hotkey_exit_edit.setKeySequence(
+            QKeySequence(self.default_settings["exit"])
+        )

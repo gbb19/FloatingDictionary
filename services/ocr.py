@@ -7,7 +7,7 @@ This module provides a unified interface for different OCR engines.
 import pytesseract
 from PIL.Image import Image
 
-from config import OCR_ENGINE, LANG_CODE_MAP, AUTO_DETECT_LANGUAGES
+from config import AUTO_DETECT_LANGUAGES, LANG_CODE_MAP, OCR_ENGINE
 from utils.app_logger import debug_print
 
 # --- Base Classes & Exceptions ---
