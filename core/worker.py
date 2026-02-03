@@ -222,10 +222,16 @@ class TranslationWorker(threading.Thread):
         task = async_translate(sentence, dest_lang=target_lang, src_lang=source_lang)
         google_result = self._run_async_task(task)
 
+        # googletrans may return a Translated object (with .text and .src),
+        # or HTML/Tag objects from other services, or plain strings.
         if isinstance(google_result, (Tag, NavigableString)):
+            google_translation = google_result.text
+        elif isinstance(google_result, Translated):
+            # Extract the translated text from the Translated object
             google_translation = google_result.text
         else:
             google_translation = str(google_result)
+
         formatted_text = (
             f"<p style='font-size: 14pt;'><b>{source_lang.upper()}:</b> {sentence}</p><hr>"
             f"<p style='font-size: 14pt;'><b>{target_lang.upper()}:</b> {google_translation}</p>"
