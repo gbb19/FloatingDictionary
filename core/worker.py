@@ -322,6 +322,16 @@ class TranslationWorker(threading.Thread):
                 debug_print("Processing Longdo data...")
                 longdo_data = parse_longdo_data(longdo_soup)
 
+            # Build a structured result to store in history/cache instead of raw HTML.
+            result = {
+                "word": search_word,
+                "detected_lang": detected_lang,
+                "target_lang": target_lang,
+                "google_translation": google_translation,
+                "longdo": longdo_data,
+            }
+
+            # Pre-generate the HTML for quick display but keep structured data too.
             formatted_translation = format_combined_data(
                 longdo_data,
                 google_translation,
@@ -329,6 +339,7 @@ class TranslationWorker(threading.Thread):
                 detected_lang,
                 target_lang,
             )
+            result["html"] = formatted_translation
 
             # If the original source was 'auto', create a new, more specific cache key
             # with the language that Google actually detected.
@@ -338,22 +349,38 @@ class TranslationWorker(threading.Thread):
                 else cache_key
             )
 
-            # Update the central data store
+            # Update the central data store with structured entry
             update_entry(
                 self.dictionary_data,
                 final_cache_key,
-                formatted_translation,
+                result,
                 MAX_HISTORY_ENTRIES,
             )
 
-            self.emitter.history_updated.emit(
-                self.dictionary_data
-            )  # Notify main thread about update
+            # Notify main thread about update and persist to disk
+            self.emitter.history_updated.emit(self.dictionary_data)
             save_data(DATA_FILE_PATH, self.dictionary_data)
         else:
             debug_print(f"Fetching from cache: {search_word}")
             debug_print("[PROFILING] Translation from cache took: 0.0000 seconds")
-            formatted_translation = self.dictionary_data[cache_key]["html"]
+            # Backwards-compatible retrieval:
+            # - New format: self.dictionary_data[cache_key] -> {'result': {...}, 'timestamp': ...}
+            # - Older format: self.dictionary_data[cache_key] -> {'html': '...', 'timestamp': ...} or similar
+            entry = self.dictionary_data.get(cache_key)
+            formatted_translation = ""
+            if isinstance(entry, dict):
+                # Prefer structured payload if present
+                if "result" in entry and isinstance(entry["result"], dict):
+                    payload = entry["result"]
+                    formatted_translation = (
+                        payload.get("html") or payload.get("google_translation") or ""
+                    )
+                else:
+                    # Older entry where HTML was stored at the top-level
+                    formatted_translation = entry.get("html") or ""
+            else:
+                # Fallback: stringify whatever we have
+                formatted_translation = str(entry)
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")
