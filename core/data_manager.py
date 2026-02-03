@@ -35,28 +35,30 @@ from utils.app_logger import debug_print
 
 def load_data(file_path: str) -> Dict[Any, Any]:
     """
-    Load the dictionary data from persistent storage.
+    Load minimal data from persistent storage.
 
     Behavior:
-    - If the configured data store is SQLite (recommended), load from the SQLite DB.
-    - Otherwise fall back to loading the JSON file as before.
-    - Returns an empty dict if the file/DB is not found or invalid.
+    - If the configured data store is SQLite (recommended), do not load the entire
+      dataset into memory at startup. Instead, initialize the DB and return an
+      empty in-memory dict. Use the helper functions below to query the DB
+      on-demand (get_entry_from_store, find_entries_by_word_target, save_entry_to_store).
+    - When DATA_STORE is not sqlite, fall back to the original JSON loading behavior.
+    - Returns an empty dict if no persistent data is loaded into memory.
     """
-    # Prefer SQLite when configured
+    # If using SQLite backend, initialize DB but avoid loading all rows into memory.
     try:
         from config import DATA_STORE, SQLITE_DB_PATH
 
         if DATA_STORE == "sqlite":
             try:
-                # local import to avoid import cycles at module import time
-                from core.sql_store import get_all
+                # Initialize DB structure if needed but do not load data.
+                from core.sql_store import init_db
 
-                data = get_all(SQLITE_DB_PATH)
-                if isinstance(data, dict):
-                    return data
-            except Exception as e_sql:
-                # Fall back to JSON if any sqlite issue occurs, but log it.
-                debug_print(f"sqlite load error, falling back to JSON: {e_sql}")
+                init_db(SQLITE_DB_PATH)
+            except Exception as e_init:
+                debug_print(f"sqlite init error (continuing): {e_init}")
+            # return empty in-memory dataset; queries should use on-demand helpers
+            return {}
     except Exception:
         # If config import or attributes missing, fall back to JSON below.
         pass
@@ -88,6 +90,132 @@ def load_data(file_path: str) -> Dict[Any, Any]:
             pass
         debug_print(f"Error loading data from '{file_path}': {e}")
         return {}
+
+
+# ---------- On-demand helpers for storage access ----------
+def get_entry_from_store(cache_key: Tuple[Any, ...], file_path: str) -> Optional[Any]:
+    """
+    Attempt to load a single entry for `cache_key` from the configured persistent store.
+
+    - If using SQLite, query the DB for the key.
+    - Otherwise, attempt to read the JSON file and return the matching entry if present.
+
+    Returns the entry value (parsed) or None if not found.
+    """
+    try:
+        from config import DATA_STORE, SQLITE_DB_PATH
+    except Exception:
+        DATA_STORE = "json"
+
+    # Prefer sqlite lookup
+    if DATA_STORE == "sqlite":
+        try:
+            from core.sql_store import get_entry
+
+            return get_entry(SQLITE_DB_PATH, cache_key)
+        except Exception as e:
+            debug_print(f"sqlite get_entry error: {e}")
+            # fall through to JSON fallback
+
+    # JSON fallback: read file and lookup the stringified key
+    try:
+        key_str = str(cache_key)
+        with open(str(file_path), "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            if key_str in raw:
+                return raw[key_str]
+    except Exception as e:
+        debug_print(f"json get_entry fallback error: {e}")
+    return None
+
+
+def find_entries_by_word_target(
+    word: str, target_lang: str, file_path: str
+) -> Dict[Any, Any]:
+    """
+    On-demand lookup of entries matching (word, *, target_lang).
+
+    - If using SQLite, use a DB-side or hybrid search to find matching keys.
+    - Otherwise, scan the JSON file for matching stringified tuple keys.
+
+    Returns a mapping of parsed keys -> entry values.
+    """
+    results: Dict[Any, Any] = {}
+    try:
+        from config import DATA_STORE, SQLITE_DB_PATH
+    except Exception:
+        DATA_STORE = "json"
+
+    if DATA_STORE == "sqlite":
+        try:
+            from core.sql_store import find_by_word_target
+
+            return find_by_word_target(SQLITE_DB_PATH, word, target_lang)
+        except Exception as e:
+            debug_print(f"sqlite find_by_word_target error: {e}")
+            # fall back to JSON scanning
+
+    # JSON fallback: scan file for matching tuple keys
+    try:
+        with open(str(file_path), "r", encoding="utf-8") as f:
+            raw = json.load(f)
+            for k, v in raw.items():
+                try:
+                    parsed_key = ast.literal_eval(k)
+                except Exception:
+                    continue
+                if isinstance(parsed_key, tuple) and len(parsed_key) >= 3:
+                    if parsed_key[0] == word and parsed_key[2] == target_lang:
+                        results[parsed_key] = v
+    except Exception as e:
+        debug_print(f"json find_entries_by_word_target error: {e}")
+    return results
+
+
+def save_entry_to_store(cache_key: Tuple[Any, ...], value: Any, file_path: str) -> bool:
+    """
+    Persist a single entry to the configured store.
+
+    - If using SQLite, perform an upsert via the SQL store.
+    - Otherwise, perform a read-modify-write of the JSON file (existing behavior).
+    """
+    try:
+        from config import DATA_STORE, SQLITE_DB_PATH
+    except Exception:
+        DATA_STORE = "json"
+
+    if DATA_STORE == "sqlite":
+        try:
+            from core.sql_store import save_entry
+
+            return bool(save_entry(SQLITE_DB_PATH, cache_key, value))
+        except Exception as e:
+            debug_print(f"sqlite save_entry error: {e}")
+            # fall through to JSON fallback
+
+    # JSON fallback: read-modify-write
+    try:
+        # Read existing data
+        data = {}
+        try:
+            with open(str(file_path), "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+        # Upsert
+        data[str(cache_key)] = value
+        # Write back atomically (reuse save_data's JSON path by delegating)
+        try:
+            # Use the module's save_data function to perform atomic write
+            return save_data(file_path, data)
+        except Exception:
+            # If something goes wrong, attempt simple write
+            with open(str(file_path), "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            return True
+    except Exception as e:
+        debug_print(f"json save_entry_to_store error: {e}")
+        return False
 
 
 def save_data(file_path: str, data: Dict[Tuple[Any, ...], Any]) -> bool:

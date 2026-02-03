@@ -136,6 +136,47 @@ def get_entry(db_path: str, key: Tuple[Any, ...] | str) -> Optional[Any]:
         return None
 
 
+def find_by_word_target(
+    db_path: str, word: str, target_lang: str
+) -> Dict[Tuple[Any, ...] | str, Any]:
+    """
+    Find entries whose key corresponds to a tuple of the form (word, src_lang, target_lang).
+    Returns a mapping of parsed key -> value for entries that match the provided word and target_lang.
+
+    Implementation notes:
+    - Keys are stored as their stringified tuple representation (e.g. \"('dispatch','en','th')\").
+    - SQLite does not easily support parsing Python tuple text; we read candidate rows and
+      filter in Python using a safe ast literal eval helper (`ast_literal_eval_safe`).
+    - This function is intended for on-demand lookups by word+target without loading the entire DB.
+    """
+    results: Dict[Tuple[Any, ...] | str, Any] = {}
+    try:
+        conn = _ensure_db(db_path)
+        cur = conn.cursor()
+        # Fetch keys and values; we perform filtering in Python for robustness.
+        cur.execute("SELECT key, value FROM cache")
+        rows = cur.fetchall()
+        conn.close()
+
+        for key_str, value_text in rows:
+            parsed_key = ast_literal_eval_safe(key_str)
+            # Expect parsed_key to be a tuple like (word, src, tgt)
+            if isinstance(parsed_key, tuple) and len(parsed_key) >= 3:
+                k_word = parsed_key[0]
+                k_target = parsed_key[2]
+                if isinstance(k_word, str) and isinstance(k_target, str):
+                    if k_word == word and k_target == target_lang:
+                        try:
+                            val = json.loads(value_text)
+                        except Exception:
+                            val = value_text
+                        results[parsed_key] = val
+        return results
+    except Exception as e:
+        debug_print(f"[sql_store] find_by_word_target error: {e}")
+        return {}
+
+
 def save_all(db_path: str, data: Dict[Tuple[Any, ...], Any]) -> bool:
     """
     Replace the entire cache table contents with the provided data dict.

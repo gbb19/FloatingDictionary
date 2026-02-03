@@ -16,7 +16,13 @@ from bs4.element import NavigableString
 from googletrans.models import Translated
 
 from config import CAPTURE_HEIGHT, CAPTURE_WIDTH, DATA_FILE_PATH, MAX_HISTORY_ENTRIES
-from core.data_manager import load_data, save_data, update_entry
+from core.data_manager import (
+    get_entry_from_store,
+    load_data,
+    save_data,
+    save_entry_to_store,
+    update_entry,
+)
 from services.ocr import OcrError, get_ocr_engine
 from services.translation import (
     async_translate,
@@ -425,6 +431,21 @@ class TranslationWorker(threading.Thread):
             return None, None
 
         found_key, cached_entry = _find_cache_alias()
+        # If the in-memory cache/alias lookup missed, attempt an on-demand disk lookup
+        # from the configured persistent store (SQLite or JSON fallback). This avoids
+        # unnecessary network fetches when the entry exists on disk but wasn't loaded
+        # into memory (e.g. when using on-demand DB storage).
+        if cached_entry is None:
+            try:
+                disk_entry = get_entry_from_store(cache_key, DATA_FILE_PATH)
+                if disk_entry is not None:
+                    debug_print(
+                        f"Loaded entry from persistent store for key: {cache_key}"
+                    )
+                    cached_entry = disk_entry
+                    found_key = cache_key
+            except Exception as e:
+                debug_print(f"On-demand disk lookup failed: {e}")
 
         if cached_entry is not None:
             debug_print(f"Fetching from cache (alias key: {found_key}): {search_word}")
@@ -631,9 +652,27 @@ class TranslationWorker(threading.Thread):
                 MAX_HISTORY_ENTRIES,
             )
 
-            # Notify main thread about update and persist to disk
+            # Notify main thread about update and persist the single new/updated entry
+            # to the persistent store using the on-demand helper. Fall back to full
+            # save if the single-entry persist fails.
             self.emitter.history_updated.emit(self.dictionary_data)
-            save_data(DATA_FILE_PATH, self.dictionary_data)
+            try:
+                # Save just the newly-created/updated entry to the persistent store
+                # (SQLite or JSON fallback) to avoid rewriting the entire file on each
+                # translation.
+                save_entry_to_store(
+                    final_cache_key,
+                    self.dictionary_data.get(final_cache_key),
+                    DATA_FILE_PATH,
+                )
+            except Exception as e:
+                debug_print(
+                    f"Failed to save single entry to store: {e} — falling back to full save"
+                )
+                try:
+                    save_data(DATA_FILE_PATH, self.dictionary_data)
+                except Exception as e2:
+                    debug_print(f"Full save fallback also failed: {e2}")
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")
