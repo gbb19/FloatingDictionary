@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=FloatingDictionary
-AppVersion=2.0
+AppVersion=3.0
 AppPublisher=Thanachote
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\FloatingDictionary
