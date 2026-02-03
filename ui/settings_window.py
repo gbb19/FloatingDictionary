@@ -190,8 +190,6 @@ class SettingsWindow(QDialog):
         """Fills the history table with data from the worker."""
         dictionary_data = self.worker.dictionary_data
 
-        today = date.today()
-
         # Sort items by timestamp descending to get correct IDs
         sorted_items = sorted(
             dictionary_data.items(), key=lambda item: item[1]["timestamp"], reverse=True

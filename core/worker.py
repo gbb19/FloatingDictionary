@@ -34,6 +34,11 @@ class TranslationWorker(threading.Thread):
         self.last_processed_box = None
         self.dictionary_data = self._load_initial_data()
         self.ocr_engine = get_ocr_engine()
+        # Runtime-only alias pointers: mapping cache_key -> canonical_key (tuple)
+        # These aliases are kept in memory and not persisted to disk to avoid
+        # storing redundant entries. They accelerate lookups for 'auto' source
+        # language cases without polluting persistent storage.
+        self.runtime_aliases = {}
 
     def _run_async_task(self, task):
         """Runs an async task in a new event loop."""
@@ -291,15 +296,43 @@ class TranslationWorker(threading.Thread):
                 """
                 Follow alias pointers starting from start_key. Protect against cycles
                 and malformed alias_for values. Returns (final_key, final_entry).
+
+                This version consults runtime-only aliases (self.runtime_aliases)
+                first so ephemeral in-memory aliases are used for resolution before
+                inspecting persistent entries on disk.
                 """
                 visited = set()
-                current_key = start_key
+                # Allow runtime alias to shortcut to a canonical key if present
+                if isinstance(start_key, tuple) and getattr(
+                    self, "runtime_aliases", None
+                ):
+                    runtime_target = self.runtime_aliases.get(start_key)
+                    if runtime_target:
+                        current_key = runtime_target
+                    else:
+                        current_key = start_key
+                else:
+                    current_key = start_key
 
                 for _ in range(max_depth):
+                    # Protect against cycles
+                    if current_key in visited:
+                        return current_key, self.dictionary_data.get(current_key)
+                    visited.add(current_key)
+
+                    # If a runtime alias exists for this key, follow it
+                    if (
+                        getattr(self, "runtime_aliases", None)
+                        and current_key in self.runtime_aliases
+                    ):
+                        current_key = self.runtime_aliases[current_key]
+                        continue
+
                     entry = self.dictionary_data.get(current_key)
                     # If entry is not an alias pointer, we've reached canonical
                     if not (isinstance(entry, dict) and "alias_for" in entry):
                         return current_key, entry
+
                     # Parse alias target robustly
                     alias_raw = entry.get("alias_for")
                     try:
@@ -311,13 +344,18 @@ class TranslationWorker(threading.Thread):
                     except Exception:
                         # Can't parse alias target; treat current as canonical
                         return current_key, entry
+
                     # Ensure alias_key is a tuple to be a valid cache key
                     if not isinstance(alias_key, tuple):
                         return current_key, entry
-                    # Detect cycles
-                    if alias_key in visited:
-                        return current_key, entry
-                    visited.add(alias_key)
+
+                    # If a runtime alias exists for the parsed alias_key, prefer it
+                    if (
+                        getattr(self, "runtime_aliases", None)
+                        and alias_key in self.runtime_aliases
+                    ):
+                        alias_key = self.runtime_aliases[alias_key]
+
                     # Move to next target in chain
                     current_key = alias_key
 
@@ -417,29 +455,41 @@ class TranslationWorker(threading.Thread):
                         except Exception:
                             canonical_key_for_alias = cache_key
                     # Store the canonical key as a string so it survives JSON serialization.
-                    canonical_entry = self.dictionary_data.get(canonical_key_for_alias)
-                    canonical_ts = None
-                    if isinstance(canonical_entry, dict):
-                        canonical_ts = canonical_entry.get("timestamp")
-                    alias_entry = {
-                        "alias_for": str(canonical_key_for_alias),
-                        "timestamp": canonical_ts or time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    }
+
                     # Only insert alias pointer if it doesn't already exist and point to the same canonical.
-                    existing_alias = self.dictionary_data.get(cache_key)
-                    if not (
-                        isinstance(existing_alias, dict)
-                        and existing_alias.get("alias_for") == alias_entry["alias_for"]
+                    # We prefer to keep pointer aliases in-memory only to avoid persisting redundant entries.
+                    existing_runtime = getattr(self, "runtime_aliases", {}).get(
+                        cache_key
+                    )
+                    existing_disk = self.dictionary_data.get(cache_key)
+
+                    # Determine where the existing alias points to, if any
+                    existing_points_to = None
+                    if existing_runtime is not None:
+                        existing_points_to = existing_runtime
+                    elif isinstance(existing_disk, dict) and isinstance(
+                        existing_disk.get("alias_for"), str
                     ):
-                        # Insert alias pointer (lightweight) rather than copying the full result.
-                        self.dictionary_data[cache_key] = alias_entry
-                        save_data(DATA_FILE_PATH, self.dictionary_data)
+                        try:
+                            # Only call literal_eval when alias_for is a string to avoid
+                            # passing None or other unexpected types to ast.literal_eval.
+                            existing_points_to = ast.literal_eval(
+                                existing_disk["alias_for"]
+                            )
+                        except Exception:
+                            existing_points_to = None
+
+                    if existing_points_to != canonical_key_for_alias:
+                        # Store alias in-memory only
+                        if not hasattr(self, "runtime_aliases"):
+                            self.runtime_aliases = {}
+                        self.runtime_aliases[cache_key] = canonical_key_for_alias
                         debug_print(
-                            f"Created pointer cache alias for key: {cache_key} -> {canonical_key_for_alias}"
+                            f"Created in-memory pointer cache alias for key: {cache_key} -> {canonical_key_for_alias}"
                         )
                     else:
                         debug_print(
-                            f"Alias for {cache_key} already exists and points to {alias_entry['alias_for']}; skipping"
+                            f"Alias for {cache_key} already exists and points to {canonical_key_for_alias}; skipping"
                         )
                 except Exception as e:
                     debug_print(f"Failed to create cache alias for {cache_key}: {e}")
