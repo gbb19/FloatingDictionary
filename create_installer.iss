@@ -3,13 +3,13 @@
 
 [Setup]
 AppName=FloatingDictionary
-AppVersion=3.0
+AppVersion=3.1
 AppPublisher=Thanachote
 PrivilegesRequired=lowest
 DefaultDirName={localappdata}\FloatingDictionary
 DefaultGroupName=FloatingDictionary
 OutputDir=.\install
-OutputBaseFilename=FloatingDictionary-Installer-v3.0
+OutputBaseFilename=FloatingDictionary-Installer-v3.1
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
