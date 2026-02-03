@@ -273,7 +273,71 @@ class TranslationWorker(threading.Thread):
 
         cache_key = (search_word, source_lang, target_lang)
 
-        if cache_key not in self.dictionary_data:
+        # Smarter cache lookup: try exact match first, then look for any cache
+        # entry with the same word and target_lang (covers cases where previous
+        # runs cached detected language instead of 'auto').
+        def _find_cache_alias():
+            # exact match
+            if cache_key in self.dictionary_data:
+                return cache_key, self.dictionary_data[cache_key]
+            # fallback: find any entry with same word and same target_lang
+            for k, v in self.dictionary_data.items():
+                try:
+                    if isinstance(k, tuple) and len(k) == 3:
+                        if k[0] == search_word and k[2] == target_lang:
+                            return k, v
+                except Exception:
+                    continue
+            return None, None
+
+        found_key, cached_entry = _find_cache_alias()
+
+        if cached_entry is not None:
+            debug_print(f"Fetching from cache (alias key: {found_key}): {search_word}")
+            debug_print("[PROFILING] Translation from cache took: 0.0000 seconds")
+            # Normalize payload: support new structured format and older top-level HTML
+            if (
+                isinstance(cached_entry, dict)
+                and "result" in cached_entry
+                and isinstance(cached_entry["result"], dict)
+            ):
+                payload = cached_entry["result"]
+                formatted_translation = (
+                    payload.get("html") or payload.get("google_translation") or ""
+                )
+            elif isinstance(cached_entry, dict):
+                # older format where HTML/metadata stored at top-level
+                formatted_translation = cached_entry.get("html") or ""
+                payload = {
+                    "html": formatted_translation,
+                    "timestamp": cached_entry.get("timestamp"),
+                }
+            else:
+                formatted_translation = str(cached_entry)
+                payload = {"html": formatted_translation}
+
+            # If we found an alias (e.g. cached under detected language) and the incoming
+            # request used 'auto', create a lightweight alias entry so future lookups
+            # using the same (word, 'auto', target) will hit the cache directly.
+            if found_key != cache_key and source_lang == "auto":
+                try:
+                    # Use the structured payload if available; otherwise wrap the HTML
+                    alias_result = (
+                        payload
+                        if isinstance(payload, dict)
+                        else {"html": formatted_translation}
+                    )
+                    update_entry(
+                        self.dictionary_data,
+                        cache_key,
+                        alias_result,
+                        MAX_HISTORY_ENTRIES,
+                    )
+                    save_data(DATA_FILE_PATH, self.dictionary_data)
+                    debug_print(f"Created cache alias for key: {cache_key}")
+                except Exception as e:
+                    debug_print(f"Failed to create cache alias for {cache_key}: {e}")
+        else:
             debug_print(f"Searching online for: {search_word}")
             t_translate_start = time.time()
 
@@ -360,27 +424,6 @@ class TranslationWorker(threading.Thread):
             # Notify main thread about update and persist to disk
             self.emitter.history_updated.emit(self.dictionary_data)
             save_data(DATA_FILE_PATH, self.dictionary_data)
-        else:
-            debug_print(f"Fetching from cache: {search_word}")
-            debug_print("[PROFILING] Translation from cache took: 0.0000 seconds")
-            # Backwards-compatible retrieval:
-            # - New format: self.dictionary_data[cache_key] -> {'result': {...}, 'timestamp': ...}
-            # - Older format: self.dictionary_data[cache_key] -> {'html': '...', 'timestamp': ...} or similar
-            entry = self.dictionary_data.get(cache_key)
-            formatted_translation = ""
-            if isinstance(entry, dict):
-                # Prefer structured payload if present
-                if "result" in entry and isinstance(entry["result"], dict):
-                    payload = entry["result"]
-                    formatted_translation = (
-                        payload.get("html") or payload.get("google_translation") or ""
-                    )
-                else:
-                    # Older entry where HTML was stored at the top-level
-                    formatted_translation = entry.get("html") or ""
-            else:
-                # Fallback: stringify whatever we have
-                formatted_translation = str(entry)
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")
