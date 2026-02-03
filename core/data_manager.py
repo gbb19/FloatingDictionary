@@ -244,24 +244,19 @@ def update_entry(
     This function will shallow-copy `result`, attach a fresh timestamp and
     store the value under 'result' with a top-level timestamp for easier sorting.
     """
-    # Copy the provided result but DO NOT duplicate timestamp/html inside 'result'.
-    # We will store a single top-level timestamp and keep 'html' only at top-level
-    # (if present) to avoid duplication.
+    # Copy the provided result but DO NOT persist HTML inside the data file.
+    # We will keep only structured fields under 'result' and a top-level timestamp.
     entry = dict(result)  # shallow copy to avoid mutating caller data
 
-    # Extract and remove 'html' from the payload if present so it is only stored
-    # once at the top-level of the stored entry.
-    html_value = None
-    if "html" in entry:
-        html_value = entry.pop("html")
+    # Remove any 'html' field from the payload so HTML/styling is not stored on disk.
+    # HTML will be generated on-the-fly by the UI formatter when displaying entries.
+    entry.pop("html", None)
 
     # Top-level timestamp for the stored entry
     top_timestamp = datetime.now().isoformat()
 
     # Build stored structure: 'result' contains structured fields (without html/timestamp)
     stored = {"result": entry, "timestamp": top_timestamp}
-    if html_value is not None:
-        stored["html"] = html_value
 
     data[cache_key] = stored
 
