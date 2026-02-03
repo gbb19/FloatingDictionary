@@ -22,6 +22,7 @@ Functions:
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -44,9 +45,18 @@ def load_data(file_path: str) -> Dict[Tuple[Any, ...], Any]:
     try:
         with open(str(file_path), "r", encoding="utf-8") as f:
             raw = json.load(f)
-            # Convert string keys back to tuples. Use eval to reconstruct tuple keys
-            # for backward compatibility with the saved format.
-            return {eval(k): v for k, v in raw.items()}
+            # Convert string keys back to tuples using ast.literal_eval for safety.
+            # We avoid using eval() on file contents. If a key cannot be parsed by
+            # literal_eval, fall back to the original string key to avoid crashing.
+            converted = {}
+            for k, v in raw.items():
+                try:
+                    converted_key = ast.literal_eval(k)
+                except Exception:
+                    # Fallback: keep original string key (will be accessed as string)
+                    converted_key = k
+                converted[converted_key] = v
+            return converted
     except (FileNotFoundError, json.JSONDecodeError):
         debug_print(f"Data file not found or invalid at '{file_path}'. Starting fresh.")
         return {}
@@ -234,11 +244,26 @@ def update_entry(
     This function will shallow-copy `result`, attach a fresh timestamp and
     store the value under 'result' with a top-level timestamp for easier sorting.
     """
+    # Copy the provided result but DO NOT duplicate timestamp/html inside 'result'.
+    # We will store a single top-level timestamp and keep 'html' only at top-level
+    # (if present) to avoid duplication.
     entry = dict(result)  # shallow copy to avoid mutating caller data
-    entry["timestamp"] = datetime.now().isoformat()
 
-    # Store structured translation result and a top-level timestamp
-    data[cache_key] = {"result": entry, "timestamp": entry["timestamp"]}
+    # Extract and remove 'html' from the payload if present so it is only stored
+    # once at the top-level of the stored entry.
+    html_value = None
+    if "html" in entry:
+        html_value = entry.pop("html")
+
+    # Top-level timestamp for the stored entry
+    top_timestamp = datetime.now().isoformat()
+
+    # Build stored structure: 'result' contains structured fields (without html/timestamp)
+    stored = {"result": entry, "timestamp": top_timestamp}
+    if html_value is not None:
+        stored["html"] = html_value
+
+    data[cache_key] = stored
 
     # Trim oldest entries if exceeding max_entries
     if len(data) > max_entries:

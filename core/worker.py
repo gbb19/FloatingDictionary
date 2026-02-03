@@ -2,6 +2,7 @@
 The main worker thread for handling OCR and translation tasks.
 """
 
+import ast
 import asyncio
 import re
 import threading
@@ -277,17 +278,76 @@ class TranslationWorker(threading.Thread):
         # entry with the same word and target_lang (covers cases where previous
         # runs cached detected language instead of 'auto').
         def _find_cache_alias():
-            # exact match
+            """
+            Find a cache entry for the current request but resolve alias chains
+            recursively so we always return a canonical stored entry (preferably
+            the object that contains 'result' or top-level 'html').
+
+            Returns:
+                (canonical_key, canonical_entry) or (None, None)
+            """
+
+            def _resolve_chain(start_key, max_depth=10):
+                """
+                Follow alias pointers starting from start_key. Protect against cycles
+                and malformed alias_for values. Returns (final_key, final_entry).
+                """
+                visited = set()
+                current_key = start_key
+
+                for _ in range(max_depth):
+                    entry = self.dictionary_data.get(current_key)
+                    # If entry is not an alias pointer, we've reached canonical
+                    if not (isinstance(entry, dict) and "alias_for" in entry):
+                        return current_key, entry
+                    # Parse alias target robustly
+                    alias_raw = entry.get("alias_for")
+                    try:
+                        alias_key = (
+                            ast.literal_eval(alias_raw)
+                            if isinstance(alias_raw, str)
+                            else alias_raw
+                        )
+                    except Exception:
+                        # Can't parse alias target; treat current as canonical
+                        return current_key, entry
+                    # Ensure alias_key is a tuple to be a valid cache key
+                    if not isinstance(alias_key, tuple):
+                        return current_key, entry
+                    # Detect cycles
+                    if alias_key in visited:
+                        return current_key, entry
+                    visited.add(alias_key)
+                    # Move to next target in chain
+                    current_key = alias_key
+
+                # Max depth reached; return what we have
+                return current_key, self.dictionary_data.get(current_key)
+
+            # 1) Exact match: if cache_key exists, resolve any alias chain starting there.
             if cache_key in self.dictionary_data:
-                return cache_key, self.dictionary_data[cache_key]
-            # fallback: find any entry with same word and same target_lang
+                # Resolve chain starting from the exact key (this handles alias -> alias -> canonical)
+                final_key, final_entry = _resolve_chain(cache_key)
+                # If resolution found a different canonical entry, return it.
+                if final_entry is not None:
+                    return final_key, final_entry
+                # Fallback: return the raw entry under cache_key
+                return cache_key, self.dictionary_data.get(cache_key)
+
+            # 2) Fallback search: look for any entry with same word and same target_lang.
             for k, v in self.dictionary_data.items():
                 try:
                     if isinstance(k, tuple) and len(k) == 3:
                         if k[0] == search_word and k[2] == target_lang:
+                            # If this stored key is an alias chain, resolve it from that key.
+                            final_key, final_entry = _resolve_chain(k)
+                            if final_entry is not None:
+                                return final_key, final_entry
+                            # Otherwise return the stored value as-is
                             return k, v
                 except Exception:
                     continue
+
             return None, None
 
         found_key, cached_entry = _find_cache_alias()
@@ -301,10 +361,27 @@ class TranslationWorker(threading.Thread):
                 and "result" in cached_entry
                 and isinstance(cached_entry["result"], dict)
             ):
+                # structured format: prefer the pre-generated HTML at top-level if present.
+                # If top-level html is missing, attempt to regenerate HTML from the structured 'result'
+                # so cached entries remain displayable even if earlier runs didn't store top-level html.
                 payload = cached_entry["result"]
-                formatted_translation = (
-                    payload.get("html") or payload.get("google_translation") or ""
-                )
+                # Prefer an explicit top-level html stored on the entry, then any html inside the payload.
+                formatted_translation = cached_entry.get("html") or payload.get("html")
+                if not formatted_translation:
+                    # Try to rebuild the HTML from structured parts using the formatter.
+                    try:
+                        formatted_translation = format_combined_data(
+                            payload.get("longdo"),
+                            payload.get("google_translation") or "",
+                            payload.get("word") or search_word,
+                            payload.get("detected_lang") or source_lang,
+                            target_lang,
+                        )
+                    except Exception:
+                        # As a fallback, show the best textual field available.
+                        formatted_translation = (
+                            payload.get("google_translation") or str(payload) or ""
+                        )
             elif isinstance(cached_entry, dict):
                 # older format where HTML/metadata stored at top-level
                 formatted_translation = cached_entry.get("html") or ""
@@ -321,20 +398,49 @@ class TranslationWorker(threading.Thread):
             # using the same (word, 'auto', target) will hit the cache directly.
             if found_key != cache_key and source_lang == "auto":
                 try:
-                    # Use the structured payload if available; otherwise wrap the HTML
-                    alias_result = (
-                        payload
-                        if isinstance(payload, dict)
-                        else {"html": formatted_translation}
-                    )
-                    update_entry(
-                        self.dictionary_data,
-                        cache_key,
-                        alias_result,
-                        MAX_HISTORY_ENTRIES,
-                    )
-                    save_data(DATA_FILE_PATH, self.dictionary_data)
-                    debug_print(f"Created cache alias for key: {cache_key}")
+                    # Create a lightweight pointer alias instead of duplicating the full result.
+                    # Prefer to use the canonical tuple key we already found. If found_key
+                    # is not a tuple (unexpected), fall back to cache_key so we don't pass None.
+                    if isinstance(found_key, tuple):
+                        canonical_key_for_alias = found_key
+                    else:
+                        # As a safe fallback, attempt to parse if it's a string representation
+                        try:
+                            parsed = (
+                                ast.literal_eval(found_key)
+                                if isinstance(found_key, str)
+                                else None
+                            )
+                            canonical_key_for_alias = (
+                                parsed if isinstance(parsed, tuple) else cache_key
+                            )
+                        except Exception:
+                            canonical_key_for_alias = cache_key
+                    # Store the canonical key as a string so it survives JSON serialization.
+                    canonical_entry = self.dictionary_data.get(canonical_key_for_alias)
+                    canonical_ts = None
+                    if isinstance(canonical_entry, dict):
+                        canonical_ts = canonical_entry.get("timestamp")
+                    alias_entry = {
+                        "alias_for": str(canonical_key_for_alias),
+                        "timestamp": canonical_ts or time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    }
+                    # Only insert alias pointer if it doesn't already exist and point to the same canonical.
+                    existing_alias = self.dictionary_data.get(cache_key)
+                    if not (
+                        isinstance(existing_alias, dict)
+                        and existing_alias.get("alias_for") == alias_entry["alias_for"]
+                    ):
+                        # Insert alias pointer (lightweight) rather than copying the full result.
+                        self.dictionary_data[cache_key] = alias_entry
+                        save_data(DATA_FILE_PATH, self.dictionary_data)
+                        debug_print(
+                            f"Created pointer cache alias for key: {cache_key} -> {canonical_key_for_alias}"
+                        )
+                    else:
+                        debug_print(
+                            f"Alias for {cache_key} already exists and points to {alias_entry['alias_for']}; skipping"
+                        )
                 except Exception as e:
                     debug_print(f"Failed to create cache alias for {cache_key}: {e}")
         else:
@@ -427,4 +533,23 @@ class TranslationWorker(threading.Thread):
 
         if self.last_processed_box == box:
             debug_print(f"Showing tooltip for: {search_word}")
+            # Debug: inspect formatted_translation before emitting to UI.
+            # Log a truncated preview and length to avoid flooding logs with huge HTML.
+            try:
+                if isinstance(formatted_translation, str):
+                    preview = formatted_translation[:1000]
+                    debug_print(
+                        f"formatted_translation length={len(formatted_translation)} preview={preview!s}"
+                    )
+                else:
+                    # Not a string (unexpected) — log its repr safely.
+                    debug_print(
+                        f"formatted_translation repr: {repr(formatted_translation)}"
+                    )
+            except Exception as _exc:
+                # Ensure we never crash while attempting to log debug info.
+                try:
+                    debug_print("formatted_translation: <unprintable>")
+                except Exception:
+                    pass
             self.emitter.show_tooltip.emit(formatted_translation, box)

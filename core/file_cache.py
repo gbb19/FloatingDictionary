@@ -2,6 +2,7 @@
 Handles reading from and writing to a file-based JSON cache.
 """
 
+import ast
 import json
 
 from utils.app_logger import debug_print
@@ -11,16 +12,35 @@ def load_cache(file_path: str) -> dict:
     """
     Loads the translation cache from a JSON file.
     Returns an empty dictionary if the file doesn't exist or is invalid.
+
+    Notes:
+    - JSON stores dictionary keys as strings. Older code used `eval()` to convert
+      those back into tuple keys; that is unsafe and has been replaced by
+      `ast.literal_eval()` which only evaluates literals.
+    - If a key cannot be parsed as a Python literal tuple, we fall back to keeping
+      the original string key to avoid raising on malformed data.
     """
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # The cache saves keys as strings, so we need to convert them back to tuples
-            return {eval(key): value for key, value in data.items()}
+            # Convert string keys back to tuples using ast.literal_eval for safety.
+            converted = {}
+            for key, value in data.items():
+                try:
+                    converted_key = ast.literal_eval(key)
+                except Exception:
+                    # Keep original string key if it can't be parsed as a literal.
+                    converted_key = key
+                converted[converted_key] = value
+            return converted
     except (FileNotFoundError, json.JSONDecodeError):
         debug_print(
             f"Cache file not found or invalid at '{file_path}'. Starting with an empty cache."
         )
+        return {}
+    except Exception as e:
+        # Unexpected errors should be logged and result in an empty cache.
+        debug_print(f"Error loading cache from '{file_path}': {e}")
         return {}
 
 
