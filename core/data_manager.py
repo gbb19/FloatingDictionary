@@ -33,15 +33,35 @@ from typing import Any, Dict, Tuple
 from utils.app_logger import debug_print
 
 
-def load_data(file_path: str) -> Dict[Tuple[Any, ...], Any]:
+def load_data(file_path: str) -> Dict[Any, Any]:
     """
-    Load the dictionary data from a JSON file.
+    Load the dictionary data from persistent storage.
 
-    The file uses stringified tuple keys (e.g. "('word','en','th')") as JSON keys.
-    This function converts those keys back to tuples.
-
-    Returns an empty dict if the file is not found or invalid.
+    Behavior:
+    - If the configured data store is SQLite (recommended), load from the SQLite DB.
+    - Otherwise fall back to loading the JSON file as before.
+    - Returns an empty dict if the file/DB is not found or invalid.
     """
+    # Prefer SQLite when configured
+    try:
+        from config import DATA_STORE, SQLITE_DB_PATH
+
+        if DATA_STORE == "sqlite":
+            try:
+                # local import to avoid import cycles at module import time
+                from core.sql_store import get_all
+
+                data = get_all(SQLITE_DB_PATH)
+                if isinstance(data, dict):
+                    return data
+            except Exception as e_sql:
+                # Fall back to JSON if any sqlite issue occurs, but log it.
+                debug_print(f"sqlite load error, falling back to JSON: {e_sql}")
+    except Exception:
+        # If config import or attributes missing, fall back to JSON below.
+        pass
+
+    # Fallback: JSON file load (existing behavior)
     try:
         with open(str(file_path), "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -72,22 +92,29 @@ def load_data(file_path: str) -> Dict[Tuple[Any, ...], Any]:
 
 def save_data(file_path: str, data: Dict[Tuple[Any, ...], Any]) -> bool:
     """
-    Atomically save the entire dictionary data to a JSON file.
+    Persist the entire dictionary data.
 
-    Strategy:
-    - Ensure parent directory exists.
-    - Serialize a mapping with string keys (str(tuple_key) -> value).
-    - Write JSON to a temporary file (same directory).
-    - Attempt to atomically replace the destination via os.replace().
-      On Windows this can raise PermissionError if the file is locked; for
-      robustness we retry a few times and then fall back to other strategies:
-        - remove existing dest then os.replace
-        - shutil.move(tmp, dest)
-        - direct overwrite (open dest and write)
-    - Clean up temporary file on failure.
-
+    Behavior:
+    - If configured to use SQLite, persist to the SQLite DB (preferred).
+    - Otherwise fall back to atomic JSON write (existing behavior).
     Returns True on success, False on failure.
     """
+    # Prefer SQLite when configured
+    try:
+        from config import DATA_STORE, SQLITE_DB_PATH
+
+        if DATA_STORE == "sqlite":
+            try:
+                from core.sql_store import save_all
+
+                return bool(save_all(SQLITE_DB_PATH, data))
+            except Exception as e_sql:
+                debug_print(f"sqlite save error, falling back to JSON: {e_sql}")
+    except Exception:
+        # Fall back to JSON if config not available
+        pass
+
+    # Fallback: atomic JSON write (existing implementation)
     file_path = str(file_path)
     tmp_path = None
     try:

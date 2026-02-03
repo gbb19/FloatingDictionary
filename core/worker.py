@@ -7,6 +7,7 @@ import asyncio
 import re
 import threading
 import time
+from collections import OrderedDict
 from queue import Queue
 
 import pyautogui
@@ -34,11 +35,10 @@ class TranslationWorker(threading.Thread):
         self.last_processed_box = None
         self.dictionary_data = self._load_initial_data()
         self.ocr_engine = get_ocr_engine()
-        # Runtime-only alias pointers: mapping cache_key -> canonical_key (tuple)
-        # These aliases are kept in memory and not persisted to disk to avoid
-        # storing redundant entries. They accelerate lookups for 'auto' source
-        # language cases without polluting persistent storage.
-        self.runtime_aliases = {}
+        # Runtime-only alias pointers stored as an LRU OrderedDict to bound memory growth.
+        # Keep at most self.max_runtime_aliases entries (default: max(200, MAX_HISTORY_ENTRIES * 3)).
+        self.runtime_aliases = OrderedDict()
+        self.max_runtime_aliases = max(200, MAX_HISTORY_ENTRIES * 3)
 
     def _run_async_task(self, task):
         """Runs an async task in a new event loop."""
@@ -56,9 +56,45 @@ class TranslationWorker(threading.Thread):
             self._process_job(job)
 
     def _load_initial_data(self):
-        """Loads the dictionary data from the file at startup."""
+        """Loads the dictionary data from the file at startup and trims old entries if needed."""
         debug_print(f"Loading data from '{DATA_FILE_PATH}'...")
-        return load_data(DATA_FILE_PATH)
+        data = load_data(DATA_FILE_PATH)
+        try:
+            # If the persisted file contains more entries than allowed, trim the oldest
+            # entries now so the process does not keep a huge dataset in memory.
+            if isinstance(data, dict) and len(data) > MAX_HISTORY_ENTRIES:
+                debug_print(
+                    f"Loaded {len(data)} entries; trimming to {MAX_HISTORY_ENTRIES}."
+                )
+
+                def _get_timestamp(item):
+                    val = item[1]
+                    if isinstance(val, dict):
+                        ts = val.get("timestamp")
+                        if isinstance(ts, str) and ts:
+                            return ts
+                        res = val.get("result")
+                        if isinstance(res, dict):
+                            r_ts = res.get("timestamp")
+                            if isinstance(r_ts, str):
+                                return r_ts
+                    return ""
+
+                sorted_items = sorted(data.items(), key=_get_timestamp)
+                # keep the most recent MAX_HISTORY_ENTRIES
+                keep_items = dict(sorted_items[-MAX_HISTORY_ENTRIES:])
+                # persist trimmed dataset back to disk to avoid loading large data next run
+                try:
+                    save_data(DATA_FILE_PATH, keep_items)
+                    debug_print(
+                        f"Trimmed persisted dictionary to {MAX_HISTORY_ENTRIES} entries."
+                    )
+                except Exception as e:
+                    debug_print(f"Failed to persist trimmed data: {e}")
+                return keep_items
+        except Exception as e:
+            debug_print(f"Error trimming loaded data: {e}")
+        return data
 
     def clear_history_and_cache(self):
         """Clears both in-memory and file-based history and cache."""
@@ -480,10 +516,28 @@ class TranslationWorker(threading.Thread):
                             existing_points_to = None
 
                     if existing_points_to != canonical_key_for_alias:
-                        # Store alias in-memory only
+                        # Store alias in-memory only (LRU) to avoid persisting redundant entries.
                         if not hasattr(self, "runtime_aliases"):
-                            self.runtime_aliases = {}
-                        self.runtime_aliases[cache_key] = canonical_key_for_alias
+                            self.runtime_aliases = OrderedDict()
+                        try:
+                            # Refresh position if key already present
+                            if cache_key in self.runtime_aliases:
+                                del self.runtime_aliases[cache_key]
+                            self.runtime_aliases[cache_key] = canonical_key_for_alias
+                            # Enforce max size
+                            if not hasattr(self, "max_runtime_aliases"):
+                                self.max_runtime_aliases = max(
+                                    200, MAX_HISTORY_ENTRIES * 3
+                                )
+                            while len(self.runtime_aliases) > self.max_runtime_aliases:
+                                try:
+                                    # pop oldest item
+                                    self.runtime_aliases.popitem(last=False)
+                                except Exception:
+                                    break
+                        except Exception:
+                            # don't let alias tracking break main flow
+                            pass
                         debug_print(
                             f"Created in-memory pointer cache alias for key: {cache_key} -> {canonical_key_for_alias}"
                         )

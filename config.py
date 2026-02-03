@@ -20,7 +20,14 @@ APP_DATA_DIR = Path(user_data_dir(APP_NAME))
 os.makedirs(APP_DATA_DIR, exist_ok=True)  # Create the directory if it doesn't exist
 
 # --- Data Store Configuration ---
+# Legacy JSON data file path (kept for backward-compatibility and migration tools).
 DATA_FILE_PATH = os.path.join(APP_DATA_DIR, "dictionary_data.json")
+# Preferred SQLite database path for persistent storage (recommended).
+SQLITE_DB_PATH = os.path.join(APP_DATA_DIR, "dictionary_data.db")
+# Which backend to use by default. Supported: "sqlite" (recommended) or "json".
+# You can override by setting the environment variable DATA_STORE.
+DATA_STORE = os.getenv("DATA_STORE", "sqlite")
+# Maximum number of entries to keep in the in-memory history/cache.
 MAX_HISTORY_ENTRIES = 100  # Maximum number of entries to keep in history
 
 # --- Hotkey Configuration ---
