@@ -5,13 +5,11 @@
 AppName=FloatingDictionary
 AppVersion=2.0
 AppPublisher=Thanachote
-; --- [แก้ไข] เปลี่ยนสิทธิ์การติดตั้งเป็นของผู้ใช้ปัจจุบัน (ไม่ต้องใช้ Admin) ---
 PrivilegesRequired=lowest
-; --- [แก้ไข] เปลี่ยนโฟลเดอร์ติดตั้งเริ่มต้นไปที่ AppData ของผู้ใช้ ---
 DefaultDirName={localappdata}\FloatingDictionary
 DefaultGroupName=FloatingDictionary
 OutputDir=.\install
-OutputBaseFilename=FloatingDictionary-Installer-v2.0
+OutputBaseFilename=FloatingDictionary-Installer-v3.0
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
