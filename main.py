@@ -4,6 +4,7 @@ from typing import Optional, Union
 
 from PyQt6.QtCore import QObject, QRect, pyqtSignal
 from PyQt6.QtGui import QAction, QActionGroup, QCursor
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 from PyQt6.QtWidgets import (
     QApplication,
     QMenu,
@@ -14,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config import (
+    APP_NAME,
     DEFAULT_HOTKEY_EXIT,
     DEFAULT_HOTKEY_SENTENCE,
     DEFAULT_HOTKEY_WORD,
@@ -45,6 +47,7 @@ class MainApplication:
         self.app = app
         self.emitter = SignalEmitter()
         self.dummy_parent_widget = QWidget()
+        self.local_server: Optional[QLocalServer] = None  # To hold the QLocalServer instance
 
         # --- Language State ---
         self.source_lang = SOURCE_LANG
@@ -339,6 +342,8 @@ class MainApplication:
         self.worker.stop()
         self.worker.join()
         self.tray_icon.hide()
+        if self.local_server:
+            self.local_server.close()
         self.app.quit()
 
 
@@ -348,10 +353,28 @@ def main():
         sys.exit(1)
 
     app = QApplication(sys.argv)
+
+    # --- Single Instance Lock ---
+    server_name = f"{APP_NAME}-InstanceLock"
+    socket = QLocalSocket()
+    socket.connectToServer(server_name)
+
+    if socket.waitForConnected(500):
+        # Another instance is running.
+        print(f"{APP_NAME} is already running. Exiting.")
+        sys.exit(0)
+    else:
+        # This is the first instance. Create the server to lock this instance.
+        # Clean up any stale lock files from previous crashes.
+        QLocalServer.removeServer(server_name)
+        local_server = QLocalServer()
+        local_server.listen(server_name)
+
     # Don't quit the app when the last window is closed, only when explicitly told to.
     app.setQuitOnLastWindowClosed(False)
 
     main_app = MainApplication(app)
+    main_app.local_server = local_server  # Keep server instance alive
     main_app.run()
 
     try:
