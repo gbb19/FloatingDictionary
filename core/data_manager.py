@@ -28,8 +28,9 @@ import os
 import shutil
 import time
 from datetime import datetime
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
+from config import DATA_STORE, SQLITE_DB_PATH
 from utils.app_logger import debug_print
 
 
@@ -46,22 +47,17 @@ def load_data(file_path: str) -> Dict[Any, Any]:
     - Returns an empty dict if no persistent data is loaded into memory.
     """
     # If using SQLite backend, initialize DB but avoid loading all rows into memory.
-    try:
-        from config import DATA_STORE, SQLITE_DB_PATH
+    if DATA_STORE == "sqlite":
+        try:
+            # Initialize DB structure if needed but do not load data.
+            from core.sql_store import init_db
 
-        if DATA_STORE == "sqlite":
-            try:
-                # Initialize DB structure if needed but do not load data.
-                from core.sql_store import init_db
-
-                init_db(SQLITE_DB_PATH)
-            except Exception as e_init:
-                debug_print(f"sqlite init error (continuing): {e_init}")
+            init_db(SQLITE_DB_PATH)
             # return empty in-memory dataset; queries should use on-demand helpers
             return {}
-    except Exception:
-        # If config import or attributes missing, fall back to JSON below.
-        pass
+        except Exception as e:
+            debug_print(f"sqlite init error: {e}")
+            # fall back to JSON loading below if init fails completely
 
     # Fallback: JSON file load (existing behavior)
     try:
@@ -102,11 +98,6 @@ def get_entry_from_store(cache_key: Tuple[Any, ...], file_path: str) -> Optional
 
     Returns the entry value (parsed) or None if not found.
     """
-    try:
-        from config import DATA_STORE, SQLITE_DB_PATH
-    except Exception:
-        DATA_STORE = "json"
-
     # Prefer sqlite lookup
     if DATA_STORE == "sqlite":
         try:
@@ -141,10 +132,6 @@ def find_entries_by_word_target(
     Returns a mapping of parsed keys -> entry values.
     """
     results: Dict[Any, Any] = {}
-    try:
-        from config import DATA_STORE, SQLITE_DB_PATH
-    except Exception:
-        DATA_STORE = "json"
 
     if DATA_STORE == "sqlite":
         try:
@@ -179,11 +166,6 @@ def save_entry_to_store(cache_key: Tuple[Any, ...], value: Any, file_path: str) 
     - If using SQLite, perform an upsert via the SQL store.
     - Otherwise, perform a read-modify-write of the JSON file (existing behavior).
     """
-    try:
-        from config import DATA_STORE, SQLITE_DB_PATH
-    except Exception:
-        DATA_STORE = "json"
-
     if DATA_STORE == "sqlite":
         try:
             from core.sql_store import save_entry
@@ -228,19 +210,13 @@ def save_data(file_path: str, data: Dict[Tuple[Any, ...], Any]) -> bool:
     Returns True on success, False on failure.
     """
     # Prefer SQLite when configured
-    try:
-        from config import DATA_STORE, SQLITE_DB_PATH
+    if DATA_STORE == "sqlite":
+        try:
+            from core.sql_store import save_all
 
-        if DATA_STORE == "sqlite":
-            try:
-                from core.sql_store import save_all
-
-                return bool(save_all(SQLITE_DB_PATH, data))
-            except Exception as e_sql:
-                debug_print(f"sqlite save error, falling back to JSON: {e_sql}")
-    except Exception:
-        # Fall back to JSON if config not available
-        pass
+            return bool(save_all(SQLITE_DB_PATH, data))
+        except Exception as e:
+            debug_print(f"sqlite save error, falling back to JSON: {e}")
 
     # Fallback: atomic JSON write (existing implementation)
     file_path = str(file_path)
